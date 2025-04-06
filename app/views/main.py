@@ -7,6 +7,7 @@ from app.models.planner import ActivityPlanner
 from app.services.sms_service import sms_service
 from app.services.email_service import email_service
 from app import db
+from flask_login import login_required, current_user
 
 main_bp = Blueprint('main', __name__)
 
@@ -15,9 +16,23 @@ def index():
     """Landing page for the application."""
     return render_template('index.html')
 
+@main_bp.route('/dashboard')
+@login_required
+def dashboard():
+    """Dashboard for managing activities."""
+    # Get activities created by the current user
+    activities = Activity.query.filter_by(creator_id=current_user.id).order_by(Activity.created_at.desc()).all()
+    
+    return render_template('dashboard.html', activities=activities)
+
 @main_bp.route('/create-activity', methods=['GET', 'POST'])
+@login_required
 def create_activity():
     """Create a new activity and invite participants."""
+    # When creating an activity, link it to the current user
+    activity = planner.create_activity()
+    activity.creator_id = current_user.id
+    db.session.commit()
     if request.method == 'POST':
         # Process form data
         organizer_name = request.form.get('organizer_name')
@@ -88,6 +103,39 @@ def create_activity():
     
     # Show the create activity form
     return render_template('create_activity.html')
+
+@main_bp.route('/activity/<activity_id>/resend-invitation/<participant_id>', methods=['POST'])
+@login_required
+def resend_invitation(activity_id, participant_id):
+    """Resend invitation to a participant."""
+    # Verify activity belongs to current user
+    activity = Activity.query.get_or_404(activity_id)
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get participant
+    participant = Participant.query.get_or_404(participant_id)
+    if participant.activity_id != activity_id:
+        flash("Participant not found in this activity.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    # Resend invitation
+    try:
+        sms_service.send_welcome_message(participant.phone_number, activity_id, participant.id)
+        if participant.email:
+            email_service.send_welcome_email(
+                participant.email,
+                participant.name or "Participant",
+                activity_id,
+                participant.id
+            )
+        flash("Invitation resent successfully!", "success")
+    except Exception as e:
+        current_app.logger.error(f"Failed to resend invitation: {str(e)}")
+        flash("Failed to resend invitation. Please try again.", "error")
+    
+    return redirect(url_for('main.activity_detail', activity_id=activity_id))
 
 @main_bp.route('/activity/<activity_id>')
 def activity_detail(activity_id):

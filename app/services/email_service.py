@@ -23,9 +23,13 @@ class EmailService:
         
         # Initialize SendGrid client
         api_key = app.config.get('SENDGRID_API_KEY')
+        print("🔍 SENDGRID_API_KEY inside EmailService.init_app:", api_key)
         
         if api_key:
             self.client = SendGridAPIClient(api_key)
+            print("✅ SendGrid client initialized!")
+        else:
+            print("❌ No SENDGRID_API_KEY found. EmailService not initialized.")
     
     def send_email(self, to_email, subject, html_content, from_email=None):
         """Send an email.

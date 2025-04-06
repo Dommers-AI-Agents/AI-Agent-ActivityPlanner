@@ -5,15 +5,41 @@ from datetime import datetime
 import uuid
 import json
 from app import db
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
 
 def generate_uuid():
     """Generate a UUID string."""
     return str(uuid.uuid4())
 
+class User(db.Model, UserMixin):
+    """User model for authentication."""
+    __tablename__ = 'users'
+    
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    username = db.Column(db.String(64), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    name = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship with activities
+    activities = db.relationship('Activity', backref='creator', lazy='dynamic')
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+        
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+        
+    def __repr__(self):
+        return f'<User {self.username}>'
+
 class Activity(db.Model):
     """Activity planning session model."""
     __tablename__ = 'activities'
     
+    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True)
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     title = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50), default='planning', nullable=False)
@@ -122,7 +148,7 @@ class Message(db.Model):
     direction = db.Column(db.String(10), nullable=False)  # 'incoming' or 'outgoing'
     channel = db.Column(db.String(10), nullable=False)    # 'sms', 'email', 'web'
     content = db.Column(db.Text, nullable=False)
-    metadata = db.Column(db.Text, nullable=True)          # JSON string for additional data
+    meta_data = db.Column(db.Text, nullable=True)          # JSON string for additional data
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -134,10 +160,10 @@ class Message(db.Model):
     @property
     def metadata_dict(self):
         """Get metadata as dictionary."""
-        if not self.metadata:
+        if not self.meta_data:
             return {}
         try:
-            return json.loads(self.metadata)
+            return json.loads(self.meta_data)
         except json.JSONDecodeError:
             return {}
     

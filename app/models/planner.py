@@ -35,6 +35,20 @@ class ActivityPlanner:
         
         return activity
     
+    def get_response_stats(self):
+        """Get participant response statistics."""
+        total = len(self.participants)
+        responded = sum(1 for p in self.participants if p.status != 'invited')
+        completed = sum(1 for p in self.participants if p.status == 'complete')
+        
+        return {
+            'total': total,
+            'responded': responded,
+            'completed': completed,
+            'response_rate': (responded / total * 100) if total > 0 else 0,
+            'completion_rate': (completed / total * 100) if total > 0 else 0
+        }
+    
     def add_participant(self, phone_number, email=None, name=None):
         """Add a participant to the activity."""
         if not self.activity:

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Group Activity Planner{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content">
+        <h1>Plan Group Activities with AI</h1>
+        <p class="lead">Create memorable experiences for everyone without the hassle</p>
+        <div class="hero-buttons">
+            <a href="{{ url_for('main.create_activity') }}" class="btn btn-primary btn-lg">Create New Activity</a>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon">📱</div>
+                <h3>Easy Collection of Preferences</h3>
+                <p>Participants share their preferences through a simple web interface or text messages.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>AI-Powered Planning</h3>
+                <p>Our AI creates personalized activity plans based on everyone's preferences and needs.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="feature-card">
+                <div class="feature-icon">📅</div>
+                <h3>Group Coordination</h3>
+                <p>Keep everyone updated with email summaries and optional text message notifications.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="how-it-works mt-5 py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">How It Works</h2>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h4>Create an Activity</h4>
+                    <p>Start by creating a new activity and inviting participants via text or email.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h4>Collect Preferences</h4>
+                    <p>Everyone shares their preferences through simple questions.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h4>Generate Plan</h4>
+                    <p>Our AI creates an optimal plan based on everyone's input.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <h4>Share & Refine</h4>
+                    <p>Share the plan, gather feedback, and finalize the perfect group activity.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <div class="testimonials">
+        <h2 class="text-center mb-4">What People Are Saying</h2>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"Planning our family reunion was so much easier with this tool. Everyone got to share their preferences and we ended up with a plan that worked for all ages."</p>
+                    <p class="testimonial-author">- Sarah J.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"As someone who always gets stuck planning group outings, this has been a game-changer. The AI does all the hard work of balancing everyone's needs."</p>
+                    <p class="testimonial-author">- Michael T.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"We used this for our team building day and it was perfect! The process was simple and the plan accommodated everyone's mobility and dietary needs."</p>
+                    <p class="testimonial-author">- Lisa M.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="cta-section mt-5 py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8 text-center">
+                <h2>Ready to plan your group activity?</h2>
+                <p class="lead">Create your first activity in minutes and let our AI handle the rest.</p>
+                <a href="{{ url_for('main.create_activity') }}" class="btn btn-primary btn-lg mt-3">Get Started Now</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

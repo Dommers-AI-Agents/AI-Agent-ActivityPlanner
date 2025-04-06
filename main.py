@@ -7,8 +7,29 @@ from app.models.planner import ActivityPlanner
 from app.services.sms_service import sms_service
 from app.services.email_service import email_service
 from app import db
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 main_bp = Blueprint('main', __name__)
+
+from app import create_app
+
+# Create the Flask application instance
+app = create_app()
+
+def get_app():
+    """Return the application instance."""
+    return app
+
+if __name__ == '__main__':
+    # Get port from environment variable or default to 5000
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the application
+    app.run(host='0.0.0.0', port=port)
 
 @main_bp.route('/')
 def index():

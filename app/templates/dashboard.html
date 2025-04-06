@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">My Activities</h3>
+                    <a href="{{ url_for('main.create_activity') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create New Activity
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if activities %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Activity</th>
+                                        <th>Status</th>
+                                        <th>Participants</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for activity in activities %}
+                                    <tr>
+                                        <td>{{ activity.title or 'Unnamed Activity' }}</td>
+                                        <td>
+                                            <span class="badge {% if activity.status == 'planning' %}bg-info{% elif activity.status == 'planned' %}bg-primary{% elif activity.status == 'finalized' %}bg-success{% else %}bg-secondary{% endif %}">
+                                                {{ activity.status.capitalize() }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {{ activity.participants|length }}
+                                            <span class="text-muted">
+                                                ({{ activity.participants|selectattr('status', 'equalto', 'complete')|list|length }} completed)
+                                            </span>
+                                        </td>
+                                        <td>{{ activity.created_at.strftime('%Y-%m-%d') }}</td>
+                                        <td>
+                                            <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-sm btn-primary">View</a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info text-center">
+                            <p>You haven't created any activities yet.</p>
+                            <a href="{{ url_for('main.create_activity') }}" class="btn btn-primary mt-2">Create Your First Activity</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
