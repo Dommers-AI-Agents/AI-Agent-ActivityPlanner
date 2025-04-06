@@ -21,6 +21,9 @@ var/
 *.egg
 .env
 
+#.env
+.env
+
 # Flask
 instance/
 .webassets-cache
