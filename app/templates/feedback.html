@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Provide Feedback - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <input type="hidden" id="activity-id" value="{{ activity.id }}">
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="form-card">
+                <h2>Provide Feedback</h2>
+                <p class="lead mb-4">Let us know what you think about the proposed plan.</p>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4 class="mb-0">{{ plan.title }}</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="plan-description">
+                            {{ plan.description }}
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="feedback-form" action="{{ url_for('main.submit_feedback', activity_id=activity.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="feedback-text" class="form-label">Your Feedback</label>
+                        <textarea id="feedback-text" name="feedback" class="form-control" rows="6" placeholder="Share your thoughts, suggestions, or concerns about this plan..."></textarea>
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">Submit Feedback</button>
+                        <a href="{{ url_for('main.view_plan', activity_id=activity.id) }}" class="btn btn-outline-secondary btn-lg ms-2">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Group Activity Plan</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #4e73df;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fc;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+        }
+        .plan-title {
+            font-size: 24px;
+            color: #4e73df;
+            margin-bottom: 20px;
+        }
+        .plan-description {
+            white-space: pre-line;
+            margin-bottom: 20px;
+        }
+        .schedule {
+            margin-bottom: 20px;
+        }
+        .schedule-item {
+            padding: 10px;
+            border-left: 3px solid #4e73df;
+            margin-bottom: 10px;
+        }
+        .schedule-time {
+            font-weight: bold;
+            color: #4e73df;
+        }
+        .button {
+            display: inline-block;
+            background-color: #4e73df;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .status {
+            display: inline-block;
+            background-color: {% if is_final|default(false) %}#1cc88a{% else %}#f6c23e{% endif %};
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #858796;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Your Group Activity Plan</h1>
+    </div>
+    <div class="content">
+        <p>Hello{% if participant_name %}, {{ participant_name }}{% endif %}!</p>
+        
+        <p>{% if is_final|default(false) %}The final group activity plan has been created!{% else %}A group activity plan has been created based on everyone's preferences.{% endif %}</p>
+        
+        <div class="status">{% if is_final|default(false) %}FINAL PLAN{% else %}DRAFT PLAN{% endif %}</div>
+        
+        <div class="plan-title">{{ plan.title }}</div>
+        
+        <div class="plan-description">
+            {{ plan.description }}
+        </div>
+        
+        {% if plan.schedule %}
+        <div class="schedule">
+            <h3>Schedule</h3>
+            {% for item in plan.schedule %}
+            <div class="schedule-item">
+                <span class="schedule-time">{{ item.time }}:</span> {{ item.activity }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        {% if not is_final|default(false) %}
+        <p>We'd love to hear your feedback on this plan. If you have any suggestions or concerns, please let us know!</p>
+        {% endif %}
+        
+        <p style="text-align: center;">
+            <a href="{{ plan_url }}" class="button">{% if is_final|default(false) %}View Final Plan{% else %}Review & Provide Feedback{% endif %}</a>
+        </p>
+        
+        <p>Thank you for your participation in planning this group activity!</p>
+    </div>
+    <div class="footer">
+        <p>© 2025 AI Group Planner. All rights reserved.</p>
+    </div>
+</body>
+</html>

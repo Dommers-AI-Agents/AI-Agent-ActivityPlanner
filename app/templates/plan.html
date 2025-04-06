@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Plan - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <input type="hidden" id="activity-id" value="{{ activity.id }}">
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="plan-container">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2 class="plan-title mb-0">{{ plan.title }}</h2>
+                    <span class="badge {% if plan.status == 'draft' %}bg-warning{% elif plan.status == 'revised' %}bg-info{% elif plan.status == 'final' %}bg-success{% endif %}">
+                        {{ plan.status.capitalize() }}
+                    </span>
+                </div>
+                
+                <div class="plan-description">
+                    {{ plan.description }}
+                </div>
+                
+                {% if plan.schedule_dict %}
+                <div class="plan-schedule">
+                    <h4>Schedule</h4>
+                    <div class="timeline">
+                        {% for item in plan.schedule_dict %}
+                        <div class="schedule-item">
+                            <div class="schedule-time">{{ item.time }}</div>
+                            <div class="schedule-activity">{{ item.activity }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if plan.status != 'final' and participant %}
+                <div class="feedback-section">
+                    <h4>Provide Feedback</h4>
+                    <p>How does this plan sound? Let us know if you have any suggestions or concerns.</p>
+                    
+                    <form id="feedback-form" action="{{ url_for('main.submit_feedback', activity_id=activity.id) }}" method="POST">
+                        <div class="mb-3">
+                            <textarea id="feedback-text" name="feedback" class="form-control" rows="4" placeholder="Your feedback..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit Feedback</button>
+                    </form>
+                </div>
+                {% endif %}
+                
+                {% if plan.status == 'final' %}
+                <div class="alert alert-success mt-4">
+                    <h5 class="alert-heading">Plan Finalized!</h5>
+                    <p>This plan has been finalized and all participants have been notified.</p>
+                </div>
+                {% elif participant and participant.status == 'complete' and plan.status != 'final' %}
+                <div class="alert alert-info mt-4">
+                    <p>Once everyone has provided feedback, the plan can be finalized.</p>
+                    {% if participant == activity.participants[0] %}
+                    <button id="finalize-plan-btn" class="btn btn-success mt-2">
+                        Finalize Plan
+                    </button>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <div class="text-center mt-4">
+                    <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-outline-secondary">
+                        Back to Activity
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

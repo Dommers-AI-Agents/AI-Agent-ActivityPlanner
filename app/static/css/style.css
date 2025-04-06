@@ -1,0 +1,351 @@
+/* Main Styles for AI Group Planner */
+
+:root {
+  --primary-color: #4e73df;
+  --primary-dark: #2e59d9;
+  --secondary-color: #f8f9fc;
+  --success-color: #1cc88a;
+  --info-color: #36b9cc;
+  --warning-color: #f6c23e;
+  --danger-color: #e74a3b;
+  --dark-color: #3a3b45;
+  --light-color: #f8f9fc;
+  --body-color: #858796;
+  --white-color: #fff;
+}
+
+body {
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--body-color);
+  background-color: var(--secondary-color);
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+}
+
+/* Navbar */
+.navbar {
+  background-color: var(--white-color);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 0.75rem 1rem;
+}
+
+.navbar-brand {
+  font-weight: 700;
+  color: var(--primary-color);
+  font-size: 1.25rem;
+}
+
+.navbar-brand i {
+  margin-right: 0.5rem;
+}
+
+.nav-link {
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  color: var(--dark-color);
+  transition: color 0.3s ease;
+}
+
+.nav-link:hover {
+  color: var(--primary-color);
+}
+
+/* Hero Section */
+.hero-section {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: var(--white-color);
+  padding: 6rem 2rem;
+  text-align: center;
+  position: relative;
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-section h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+.hero-section .lead {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.hero-buttons {
+  margin-top: 2rem;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  border-radius: 0.375rem;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Feature Cards */
+.feature-card {
+  background-color: var(--white-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  text-align: center;
+  height: 100%;
+  transition: transform 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-10px);
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.feature-card h3 {
+  color: var(--dark-color);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+/* How It Works Section */
+.how-it-works {
+  background-color: var(--white-color);
+}
+
+.step-card {
+  text-align: center;
+  padding: 1.5rem;
+  position: relative;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  background-color: var(--primary-color);
+  color: var(--white-color);
+  border-radius: 50%;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 auto 1.5rem;
+}
+
+.step-card h4 {
+  color: var(--dark-color);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+/* Testimonials */
+.testimonial-card {
+  background-color: var(--white-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  height: 100%;
+}
+
+.testimonial-text {
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+}
+
+.testimonial-author {
+  font-weight: 700;
+  color: var(--primary-color);
+  text-align: right;
+}
+
+/* CTA Section */
+.cta-section {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: var(--white-color);
+}
+
+/* Forms */
+.form-card {
+  background-color: var(--white-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.form-card h2 {
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+  font-weight: 700;
+}
+
+.form-label {
+  font-weight: 600;
+  color: var(--dark-color);
+}
+
+.form-control {
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  border: 1px solid #e3e6f0;
+}
+
+.form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.25);
+}
+
+/* Questions Interface */
+.question-container {
+  background-color: var(--white-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.question {
+  margin-bottom: 2rem;
+}
+
+.question-text {
+  font-weight: 600;
+  font-size: 1.2rem;
+  color: var(--dark-color);
+  margin-bottom: 1rem;
+}
+
+/* Activity Plan */
+.plan-container {
+  background-color: var(--white-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+}
+
+.plan-title {
+  color: var(--primary-color);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.plan-description {
+  white-space: pre-line;
+  margin-bottom: 2rem;
+}
+
+.plan-schedule {
+  margin-bottom: 2rem;
+}
+
+.schedule-item {
+  display: flex;
+  margin-bottom: 1rem;
+  border-left: 3px solid var(--primary-color);
+  padding-left: 1rem;
+}
+
+.schedule-time {
+  font-weight: 700;
+  width: 100px;
+  color: var(--dark-color);
+}
+
+.feedback-section {
+  margin-top: 2rem;
+  border-top: 1px solid #e3e6f0;
+  padding-top: 2rem;
+}
+
+/* Footer */
+.footer {
+  background-color: var(--dark-color);
+  color: var(--white-color);
+}
+
+.footer h5 {
+  color: var(--white-color);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.footer a {
+  color: var(--light-color);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.footer a:hover {
+  color: var(--white-color);
+  text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 991.98px) {
+  .hero-section h1 {
+    font-size: 2.5rem;
+  }
+  
+  .hero-section .lead {
+    font-size: 1.25rem;
+  }
+  
+  .feature-card, .testimonial-card {
+    margin-bottom: 2rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .hero-section {
+    padding: 4rem 1rem;
+  }
+  
+  .hero-section h1 {
+    font-size: 2rem;
+  }
+  
+  .step-card {
+    margin-bottom: 2rem;
+  }
+  
+  .form-card, .question-container, .plan-container {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .navbar-brand {
+    font-size: 1.1rem;
+  }
+  
+  .hero-section h1 {
+    font-size: 1.75rem;
+  }
+  
+  .hero-section .lead {
+    font-size: 1rem;
+  }
+  
+  .btn-lg {
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+  }
+}

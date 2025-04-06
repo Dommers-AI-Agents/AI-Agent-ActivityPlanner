@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Your Preferences - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <input type="hidden" id="activity-id" value="{{ activity.id }}">
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="question-container">
+                <h2 class="mb-4">Your Preferences</h2>
+                
+                {% if all_complete %}
+                    <div class="alert alert-success text-center">
+                        <h4 class="alert-heading">Thank you!</h4>
+                        <p>You've answered all the questions. Your preferences have been saved.</p>
+                        <hr>
+                        <p class="mb-0">The group activity plan will be created once everyone has provided their input.</p>
+                        <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
+                            Return to Activity
+                        </a>
+                    </div>
+                {% else %}
+                    <p class="lead mb-4">Please answer the following questions to help us plan the perfect activity for your group.</p>
+                    
+                    <div id="questions-container">
+                        <!-- Questions will be rendered here -->
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <button id="submit-answers-btn" class="btn btn-primary btn-lg">
+                            Continue
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Pass questions data to the JavaScript
+    window.questionsBatch = {{ questions|tojson }};
+</script>
+{% endblock %}
+{% endblock %}

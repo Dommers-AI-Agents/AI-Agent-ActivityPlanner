@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Details - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <input type="hidden" id="activity-id" value="{{ activity.id }}">
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">Group Activity</h3>
+                    <span class="badge {% if activity.status == 'planning' %}bg-info{% elif activity.status == 'planned' %}bg-primary{% elif activity.status == 'finalized' %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ activity.status.capitalize() }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Activity Information</h5>
+                    <p>Created: {{ activity.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                    
+                    {% if participant %}
+                        <div class="alert alert-info mt-3">
+                            <h5>Welcome{% if participant.name %}, {{ participant.name }}{% endif %}!</h5>
+                            <p>Thank you for participating in this group activity planning.</p>
+                            
+                            {% if participant.status == 'invited' %}
+                                <a href="{{ url_for('main.activity_questions', activity_id=activity.id) }}" class="btn btn-primary">
+                                    Start Providing Your Preferences
+                                </a>
+                            {% elif participant.status == 'active' %}
+                                <a href="{{ url_for('main.activity_questions', activity_id=activity.id) }}" class="btn btn-primary">
+                                    Continue Providing Your Preferences
+                                </a>
+                            {% elif participant.status == 'complete' %}
+                                <p>Thank you for completing your preferences!</p>
+                                
+                                {% if plan %}
+                                    <a href="{{ url_for('main.view_plan', activity_id=activity.id) }}" class="btn btn-success">
+                                        View The Plan
+                                    </a>
+                                {% else %}
+                                    <p>The plan will be created once everyone has provided their input.</p>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Participants Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Participants</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Contact</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in activity.participants %}
+                                <tr>
+                                    <td>{{ p.name or 'Unnamed Participant' }}</td>
+                                    <td>
+                                        <span class="badge {% if p.status == 'invited' %}bg-warning{% elif p.status == 'active' %}bg-info{% elif p.status == 'complete' %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ p.status.capitalize() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if p.email %}
+                                            <i class="fas fa-envelope"></i> {{ p.email }}<br>
+                                        {% endif %}
+                                        <i class="fas fa-phone"></i> {{ p.phone_number }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Plan Status Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Plan Status</h5>
+                </div>
+                <div class="card-body">
+                    {% set completed_count = activity.participants|selectattr('status', 'equalto', 'complete')|list|length %}
+                    {% set total_count = activity.participants|length %}
+                    
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ (completed_count / total_count * 100)|int }}%"
+                             aria-valuenow="{{ completed_count }}" aria-valuemin="0" aria-valuemax="{{ total_count }}">
+                            {{ completed_count }} / {{ total_count }} Complete
+                        </div>
+                    </div>
+                    
+                    <p class="mb-3">
+                        <strong>{{ completed_count }}</strong> out of <strong>{{ total_count }}</strong> participants have completed their preferences.
+                    </p>
+                    
+                    {% if plan %}
+                        <div class="alert alert-success">
+                            <h5 class="alert-heading">Plan Created!</h5>
+                            <p>The activity plan has been generated based on everyone's preferences.</p>
+                            <a href="{{ url_for('main.view_plan', activity_id=activity.id) }}" class="btn btn-success">
+                                View Plan
+                            </a>
+                        </div>
+                    {% elif completed_count == total_count %}
+                        <div class="alert alert-info">
+                            <h5 class="alert-heading">Ready to Generate Plan!</h5>
+                            <p>All participants have provided their preferences. You can now generate the activity plan.</p>
+                            <button id="generate-plan-btn" class="btn btn-primary">
+                                Generate Plan
+                            </button>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <h5 class="alert-heading">Waiting for More Input</h5>
+                            <p>We're still waiting for some participants to provide their preferences.</p>
+                            
+                            {% if completed_count > 0 and completed_count >= (total_count / 2)|int %}
+                                <p>However, you can generate a plan with the current preferences if you'd like to get started.</p>
+                                <button id="generate-plan-btn" class="btn btn-outline-primary">
+                                    Generate Preliminary Plan
+                                </button>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
