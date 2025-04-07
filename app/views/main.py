@@ -30,6 +30,7 @@ def dashboard():
 def create_activity():
     """Create a new activity and invite participants."""
     # When creating an activity, link it to the current user
+    planner = ActivityPlanner()
     activity = planner.create_activity()
     activity.creator_id = current_user.id
     db.session.commit()
