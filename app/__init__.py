@@ -46,6 +46,7 @@ def create_app(config=None):
     # User loader for Flask-Login
     @login_manager.user_loader
     def load_user(user_id):
+        from app.models.database import User  # Add this import inside the function
         return User.query.get(user_id)
     
     # Register blueprints
@@ -56,7 +57,7 @@ def create_app(config=None):
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(auth_bp)
-    
+
     # Create database tables if needed (development only)
     if app.config['ENV'] == 'development':
         with app.app_context():

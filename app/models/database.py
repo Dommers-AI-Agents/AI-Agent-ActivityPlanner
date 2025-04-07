@@ -39,11 +39,12 @@ class Activity(db.Model):
     """Activity planning session model."""
     __tablename__ = 'activities'
     
-    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True)
+    # In the Activity class
+    creator_id = db.Column(db.String(36), db.ForeignKey('users.id', name='fk_activity_creator'), nullable=True)
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     title = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50), default='planning', nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_id = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
