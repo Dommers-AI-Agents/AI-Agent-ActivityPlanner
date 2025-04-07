@@ -3,6 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 #from werkzeug.urls import url_parse as werkzeug_url_parse
 from app import db
 from app.models.database import User
+from app.services.email_service import email_service
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -71,3 +72,49 @@ def register():
 @login_required
 def profile():
     return render_template('auth/profile.html')
+
+@auth_bp.route('/reset_password_request', methods=['GET', 'POST'])
+def reset_password_request():
+    if current_user.is_authenticated:
+        return redirect(url_for('main.index'))
+        
+    if request.method == 'POST':
+        email = request.form.get('email')
+        user = User.query.filter_by(email=email).first()
+        
+        if user:
+            token = user.get_reset_token()
+            email_service.send_password_reset_email(user, token)
+            flash('Check your email for instructions to reset your password', 'info')
+        else:
+            flash('Email not found. Please check your email or register for an account.', 'error')
+            return redirect(url_for('auth.register'))
+            
+        return redirect(url_for('auth.login'))
+        
+    return render_template('auth/reset_password_request.html')
+
+@auth_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('main.index'))
+        
+    user = User.verify_reset_token(token)
+    if not user:
+        flash('Invalid or expired reset token. Please try again.', 'error')
+        return redirect(url_for('auth.reset_password_request'))
+        
+    if request.method == 'POST':
+        password = request.form.get('password')
+        password2 = request.form.get('password2')
+        
+        if password != password2:
+            flash('Passwords do not match. Please try again.', 'error')
+            return render_template('auth/reset_password.html', token=token)
+            
+        user.set_password(password)
+        db.session.commit()
+        flash('Your password has been reset. You can now log in with your new password.', 'success')
+        return redirect(url_for('auth.login'))
+        
+    return render_template('auth/reset_password.html', token=token)

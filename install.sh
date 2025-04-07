@@ -22,13 +22,14 @@ echo -e "${NC}"
 
 # Check if Python is installed
 echo -e "${BOLD}Checking prerequisites...${NC}"
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}Python 3 is not installed. Please install Python 3 and try again.${NC}"
-    exit 1
-fi
-
-if ! command -v pip3 &> /dev/null; then
-    echo -e "${RED}pip is not installed. Please install pip and try again.${NC}"
+if command -v python3 &> /dev/null; then
+    echo -e "${GREEN}Python 3 detected.${NC}"
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null && python --version 2>&1 | grep -q "Python 3"; then
+    echo -e "${GREEN}Python 3 detected (as 'python' command).${NC}"
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}Python 3 is not installed or not in your PATH. Please install Python 3 and try again.${NC}"
     exit 1
 fi
 

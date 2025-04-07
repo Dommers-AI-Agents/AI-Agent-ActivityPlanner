@@ -1,9 +1,11 @@
 """
 Database models for the Group Activity Planner AI Agent.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import json
+import jwt
+from flask import current_app
 from app import db
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
@@ -31,6 +33,47 @@ class User(db.Model, UserMixin):
         
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    def get_reset_token(self, expires_in=3600):
+        """Generate a password reset token.
+        
+        Args:
+            expires_in (int): Token expiration time in seconds. Default is 1 hour.
+            
+        Returns:
+            str: JWT token for password reset
+        """
+        return jwt.encode(
+            {
+                'reset_password': self.id,
+                'exp': datetime.utcnow() + timedelta(seconds=expires_in)
+            },
+            current_app.config['SECRET_KEY'],
+            algorithm='HS256'
+        )
+    
+    @staticmethod
+    def verify_reset_token(token):
+        """Verify a password reset token.
+        
+        Args:
+            token (str): The token to verify
+            
+        Returns:
+            User: The user if token is valid, None otherwise
+        """
+        try:
+            data = jwt.decode(
+                token,
+                current_app.config['SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            user_id = data.get('reset_password')
+            if not user_id:
+                return None
+            return User.query.get(user_id)
+        except Exception:
+            return None
         
     def __repr__(self):
         return f'<User {self.username}>'

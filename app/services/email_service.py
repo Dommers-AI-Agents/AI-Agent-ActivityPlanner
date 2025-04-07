@@ -230,6 +230,52 @@ class EmailService:
             responses.append(response)
         
         return responses
+        
+    def send_password_reset_email(self, user, token):
+        """Send a password reset email with a reset link.
+        
+        Args:
+            user (User): The user requesting the password reset.
+            token (str): The password reset token.
+            
+        Returns:
+            dict: Response data from SendGrid.
+        """
+        # Build the reset URL
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        reset_url = f"{app_url}/auth/reset_password/{token}"
+        
+        # Define email subject
+        subject = "Password Reset Request"
+        
+        # Try to use the template if it exists
+        try:
+            html_content = render_template(
+                'emails/password_reset.html',
+                user=user,
+                reset_url=reset_url
+            )
+        except Exception:
+            # Fallback to inline template if the file doesn't exist
+            html_content = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>Password Reset Request</h2>
+                <p>Hello {user.name or user.username},</p>
+                <p>You requested a password reset for your account. Please click the link below to reset your password:</p>
+                <p style="margin: 20px 0;">
+                    <a href="{reset_url}" 
+                       style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px;">
+                        Reset Your Password
+                    </a>
+                </p>
+                <p>Or copy and paste this link into your browser:</p>
+                <p style="word-break: break-all;">{reset_url}</p>
+                <p>If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+                <p>This link will expire in 1 hour.</p>
+            </div>
+            """
+        
+        return self.send_email(user.email, subject, html_content)
 
 # Initialize the email service
 email_service = EmailService()
