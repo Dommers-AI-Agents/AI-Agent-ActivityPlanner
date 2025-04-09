@@ -151,9 +151,9 @@
                     {% set total_count = activity.participants|length %}
                     
                     <div class="progress mb-3">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ (completed_count / total_count * 100)|int }}%"
+                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ (completed_count / total_count * 100)|int if total_count > 0 else 0 }}%"
                              aria-valuenow="{{ completed_count }}" aria-valuemin="0" aria-valuemax="{{ total_count }}">
-                            {{ completed_count }} / {{ total_count }} Complete
+                             {{ (completed_count / total_count * 100)|int if total_count > 0 else 0 }}%
                         </div>
                     </div>
                     

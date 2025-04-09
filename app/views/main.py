@@ -21,7 +21,7 @@ def index():
 def dashboard():
     """Dashboard for managing activities."""
     # Get activities created by the current user
-    activities = Activity.query.filter_by(creator_id=current_user.id).order_by(Activity.created_id.desc()).all()
+    activities = Activity.query.filter_by(creator_id=current_user.id).order_by(Activity.created_at.desc()).all()
     
     return render_template('dashboard.html', activities=activities)
 

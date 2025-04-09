@@ -87,7 +87,7 @@ class Activity(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     title = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50), default='planning', nullable=False)
-    created_id = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
@@ -97,6 +97,20 @@ class Activity(db.Model):
     
     def __repr__(self):
         return f'<Activity {self.id}>'
+    
+    def get_response_stats(self):
+        """Get participant response statistics."""
+        total = len(self.participants)
+        responded = sum(1 for p in self.participants if p.status != 'invited')
+        completed = sum(1 for p in self.participants if p.status == 'complete')
+        
+        return {
+            'total': total,
+            'responded': responded,
+            'completed': completed,
+            'response_rate': (responded / total * 100) if total > 0 else 0,
+            'completion_rate': (completed / total * 100) if total > 0 else 0
+        }
     
     @property
     def is_complete(self):
