@@ -472,7 +472,7 @@ def generate_plan(activity_id):
     
     # Check if at least one participant has completed their preferences
     stats = activity.get_response_stats()
-    if stats.completed == 0:
+    if stats['completed'] == 0:
         flash("Unable to generate a plan. At least one participant must complete all preference questions.", "error")
         return redirect(url_for('main.activity_detail', activity_id=activity_id))
     
