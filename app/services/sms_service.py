@@ -88,14 +88,20 @@ class SMSService:
         else:
             url = f"{app_url}/activity/{activity_id}"
         
-        # Create message body
+        # Short message body
         body = (
-            "Welcome to the Group Activity Planner! 🎉\n\n"
-            "Help us plan the perfect activity by sharing your preferences. "
-            "Click the link below to continue:\n\n"
+            "Help plan your group activity by sharing your preferences."
             f"{url}\n\n"
-            "This link is unique to you. No need to create an account!"
         )
+
+        # Original message body    
+        #body = (
+        #    "Welcome to the Group Activity Planner! 🎉\n\n"
+        #    "Help us plan the perfect activity by sharing your preferences. "
+        #    "Click the link below to continue:\n\n"
+        #    f"{url}\n\n"
+        #    "This link is unique to you. No need to create an account!"
+        #)
         
         return self.send_message(to_number, body)
     

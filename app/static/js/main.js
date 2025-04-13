@@ -294,7 +294,10 @@ function createQuestionElement(question) {
  */
 function submitAnswers() {
   const questionsContainer = document.getElementById('questions-container');
-  if (!questionsContainer) return;
+  if (!questionsContainer) {
+    console.error('Questions container not found');
+    return;
+  }
   
   const activityId = document.getElementById('activity-id')?.value;
   if (!activityId) {
@@ -302,9 +305,13 @@ function submitAnswers() {
     return;
   }
   
+  console.log('Submitting answers for activity ID:', activityId);
+  
   // Collect answers from the form
   const answers = {};
   const questionElements = questionsContainer.querySelectorAll('.question');
+  
+  console.log('Found', questionElements.length, 'question elements');
   
   questionElements.forEach(questionEl => {
     const questionId = questionEl.dataset.questionId;
@@ -314,23 +321,39 @@ function submitAnswers() {
     if (questionEl.querySelector('select')) {
       // Select dropdown
       value = questionEl.querySelector('select').value;
+      console.log('Select value for', questionId, ':', value);
     } else if (questionEl.querySelector('.multiselect-options')) {
       // Multiselect checkboxes
       const checkedOptions = questionEl.querySelectorAll('input[type="checkbox"]:checked');
       value = Array.from(checkedOptions).map(option => option.value);
+      console.log('Multiselect value for', questionId, ':', value);
     } else if (questionEl.querySelector('.form-check-input[type="checkbox"]')) {
       // Boolean (yes/no) question
       value = questionEl.querySelector('.form-check-input').checked;
+      console.log('Boolean value for', questionId, ':', value);
     } else if (questionEl.querySelector('textarea')) {
       // Textarea
       value = questionEl.querySelector('textarea').value;
+      console.log('Textarea value for', questionId, ':', value);
     } else if (questionEl.querySelector('input')) {
       // Text, email, number inputs
       value = questionEl.querySelector('input').value;
+      console.log('Input value for', questionId, ':', value);
+    } else {
+      console.warn('Could not find input element for question', questionId);
     }
     
     answers[questionId] = value;
   });
+  
+  console.log('Submitting answers:', answers);
+  
+  // Show loading state
+  const submitBtn = document.getElementById('submit-answers-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting...';
+  }
   
   // Send answers to the server
   fetch(`/activity/${activityId}/submit-answers`, {
@@ -341,26 +364,47 @@ function submitAnswers() {
     body: JSON.stringify({ answers }),
   })
   .then(response => {
+    console.log('Response status:', response.status);
     if (!response.ok) {
-      throw new Error('Network response was not ok');
+      throw new Error('Network response was not ok: ' + response.status);
     }
     return response.json();
   })
   .then(data => {
+    console.log('Server response:', data);
+    
+    // Reset button state
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Continue';
+    }
+    
     if (data.complete) {
+      console.log('All questions completed');
       // All questions have been answered
       showCompletionMessage();
     } else if (data.next_questions) {
+      console.log('Rendering next batch of questions:', data.next_questions);
       // Show the next batch of questions
       renderQuestions(data.next_questions);
       
       // Scroll to the top of the questions container
       questionsContainer.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      console.warn('No next_questions in response');
+      alert('No more questions available. Please refresh the page.');
     }
   })
   .catch(error => {
     console.error('Error submitting answers:', error);
-    alert('There was a problem submitting your answers. Please try again.');
+    
+    // Reset button state
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Try Again';
+    }
+    
+    alert('There was a problem submitting your answers: ' + error.message);
   });
 }
 

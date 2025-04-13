@@ -138,6 +138,161 @@ def resend_invitation(activity_id, participant_id):
     
     return redirect(url_for('main.activity_detail', activity_id=activity_id))
 
+@main_bp.route('/activity/<activity_id>/resend-all-invitations', methods=['POST'])
+@login_required
+def resend_all_invitations(activity_id):
+    """Resend invitations to all participants."""
+    # Verify activity belongs to current user
+    activity = Activity.query.get_or_404(activity_id)
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get participants who haven't responded yet
+    invited_participants = Participant.query.filter_by(
+        activity_id=activity_id,
+        status='invited'
+    ).all()
+    
+    if not invited_participants:
+        flash("No pending invitations to resend.", "info")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    # Count successful resends
+    success_count = 0
+    
+    # Resend invitations
+    for participant in invited_participants:
+        try:
+            sms_service.send_welcome_message(participant.phone_number, activity_id, participant.id)
+            if participant.email:
+                email_service.send_welcome_email(
+                    participant.email,
+                    participant.name or "Participant",
+                    activity_id,
+                    participant.id
+                )
+            success_count += 1
+        except Exception as e:
+            current_app.logger.error(f"Failed to resend invitation to {participant.phone_number}: {str(e)}")
+    
+    if success_count > 0:
+        flash(f"Successfully resent {success_count} invitation(s)!", "success")
+    else:
+        flash("Failed to resend invitations. Please try again.", "error")
+    
+    return redirect(url_for('main.activity_detail', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/reset-progress/<participant_id>', methods=['POST'])
+@login_required
+def reset_participant_progress(activity_id, participant_id):
+    """Reset a participant's progress to restart the questionnaire."""
+    # Verify activity belongs to current user
+    activity = Activity.query.get_or_404(activity_id)
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get participant
+    participant = Participant.query.get_or_404(participant_id)
+    if participant.activity_id != activity_id:
+        flash("Participant not found in this activity.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    try:
+        # Reset the participant's progress using the helper function
+        _reset_participant_preferences(activity_id, participant_id)
+        
+        # Resend invitation
+        sms_service.send_welcome_message(participant.phone_number, activity_id, participant.id)
+        if participant.email:
+            email_service.send_welcome_email(
+                participant.email,
+                participant.name or "Participant",
+                activity_id,
+                participant.id
+            )
+        
+        flash(f"Progress reset for {participant.name or 'participant'}. New invitation sent.", "success")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to reset participant progress: {str(e)}")
+        flash("Failed to reset participant progress. Please try again.", "error")
+    
+    return redirect(url_for('main.activity_detail', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/self-reset', methods=['POST'])
+def self_reset_progress(activity_id):
+    """Allow participants to reset their own progress to restart the questionnaire."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Get the participant from session
+    participant_id = session.get(f'activity_{activity_id}_participant')
+    if not participant_id:
+        flash("Please access this page through your invitation link.", "error")
+        return redirect(url_for('main.index'))
+    
+    participant = Participant.query.get(participant_id)
+    if not participant or participant.activity_id != activity_id:
+        flash("Invalid participant access.", "error")
+        return redirect(url_for('main.index'))
+    
+    try:
+        # Reset the participant's preferences
+        _reset_participant_preferences(activity_id, participant_id)
+        flash("Your preferences have been reset. You can now restart the questionnaire with the latest questions.", "success")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to reset participant progress: {str(e)}")
+        flash("Failed to reset your progress. Please try again.", "error")
+    
+    return redirect(url_for('main.activity_questions', activity_id=activity_id))
+
+def _reset_participant_preferences(activity_id, participant_id):
+    """Helper function to reset a participant's preferences."""
+    # Get participant
+    participant = Participant.query.get(participant_id)
+    if not participant:
+        raise ValueError(f"Participant with ID {participant_id} not found")
+    
+    # Delete all preferences except contact info
+    contact_preferences = {}
+    contact_preferences_query = Preference.query.filter_by(
+        activity_id=activity_id,
+        participant_id=participant_id,
+        category='contact'
+    ).all()
+    
+    # Save contact preferences
+    for pref in contact_preferences_query:
+        contact_preferences[pref.key] = pref.value
+    
+    # Delete all preferences
+    Preference.query.filter_by(
+        activity_id=activity_id,
+        participant_id=participant_id
+    ).delete()
+    
+    db.session.commit()
+    
+    # Restore contact preferences
+    for key, value in contact_preferences.items():
+        preference = Preference(
+            activity_id=activity_id,
+            participant_id=participant_id,
+            category='contact',
+            key=key,
+            value=value
+        )
+        db.session.add(preference)
+    
+    # Reset participant status
+    participant.status = 'invited'
+    db.session.commit()
+    
+    return participant
+
 @main_bp.route('/activity/<activity_id>')
 def activity_detail(activity_id):
     """Activity detail page."""
@@ -187,10 +342,22 @@ def activity_questions(activity_id):
         flash("Invalid participant access.", "error")
         return redirect(url_for('main.index'))
     
+    # Force reload participant data to ensure we're using the latest data and questions
+    db.session.refresh(participant)
+    
     # Initialize planner and get next questions
     planner = ActivityPlanner(activity_id)
+    
+    # For debugging - check if we're getting the new questions format
+    current_app.logger.info(f"Getting questions batch for participant {participant_id} with status {participant.status}")
+    
+    # Get the questions
     questions = planner.generate_questions_batch(participant_id)
     
+    # Log the first question's information for debugging
+    if questions and len(questions) > 0:
+        current_app.logger.info(f"First question: {questions[0]['question']}")
+        
     # Check if we've answered all questions
     all_complete = questions is None
     
@@ -211,14 +378,24 @@ def submit_answers(activity_id):
     # Get the participant from session
     participant_id = session.get(f'activity_{activity_id}_participant')
     if not participant_id:
-        return jsonify({"error": "Unauthorized"}), 401
+        current_app.logger.error(f"No participant ID in session for activity {activity_id}")
+        return jsonify({"error": "Unauthorized - No participant in session"}), 401
     
     participant = Participant.query.get(participant_id)
     if not participant or participant.activity_id != activity_id:
-        return jsonify({"error": "Unauthorized"}), 401
+        current_app.logger.error(f"Invalid participant {participant_id} for activity {activity_id}")
+        return jsonify({"error": "Unauthorized - Invalid participant"}), 401
+    
+    # Log participant status
+    current_app.logger.info(f"Processing answers for participant {participant_id} (status: {participant.status})")
     
     # Process the submitted answers
     answers = request.json.get('answers', {})
+    current_app.logger.info(f"Received answers: {answers}")
+    
+    if not answers:
+        current_app.logger.warning(f"No answers submitted for participant {participant_id}")
+        return jsonify({"error": "No answers provided"}), 400
     
     # Save answers as preferences
     planner = ActivityPlanner(activity_id)
@@ -226,16 +403,22 @@ def submit_answers(activity_id):
         # Determine category based on question ID or batch
         if question_id in ['email', 'name', 'allow_group_text']:
             category = 'contact'
-        elif question_id in ['group_size', 'has_children', 'has_seniors']:
+        elif question_id in ['group_size', 'has_children', 'has_seniors', 'social_level']:
             category = 'group'
         elif question_id in ['preferred_day', 'preferred_time', 'duration']:
             category = 'timing'
-        elif question_id in ['activity_type', 'walking_preference', 'budget_range']:
+        elif question_id in ['activity_type', 'physical_exertion', 'budget_range', 'learning_preference']:
             category = 'activity'
-        elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info']:
+        elif question_id in ['meals_included']:
+            category = 'meals'
+        elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info', 'direct_input']:
             category = 'requirements'
         else:
             category = 'other'
+            current_app.logger.info(f"Question {question_id} mapped to 'other' category")
+        
+        # Log the preference being saved
+        current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
         
         # Save the preference
         planner.save_preference(participant_id, category, question_id, answer)
@@ -252,26 +435,46 @@ def submit_answers(activity_id):
     if answers:
         participant.status = 'active'
         db.session.commit()
+        current_app.logger.info(f"Updated participant {participant_id} status to 'active'")
+    
+    # Force database refresh before getting next questions
+    db.session.refresh(participant)
     
     # Get next batch of questions
+    current_app.logger.info(f"Getting next question batch for participant {participant_id}")
     next_questions = planner.generate_questions_batch(participant_id)
     
-    # Update status to complete if no more questions
+    # Log the next questions or completion
     if next_questions is None:
+        current_app.logger.info(f"No more questions for participant {participant_id}")
         participant.status = 'complete'
         db.session.commit()
+        current_app.logger.info(f"Updated participant {participant_id} status to 'complete'")
+    else:
+        current_app.logger.info(f"Next batch has {len(next_questions)} questions")
+        current_app.logger.info(f"First question: {next_questions[0]['question'] if next_questions else 'None'}")
     
-    return jsonify({
+    # Prepare response
+    response_data = {
         "success": True,
         "next_questions": next_questions,
         "complete": next_questions is None
-    })
+    }
+    current_app.logger.info(f"Returning response: {response_data}")
+    
+    return jsonify(response_data)
 
 @main_bp.route('/activity/<activity_id>/generate-plan')
 def generate_plan(activity_id):
     """Generate an activity plan."""
     # Get the activity
     activity = Activity.query.get_or_404(activity_id)
+    
+    # Check if at least one participant has completed their preferences
+    stats = activity.get_response_stats()
+    if stats.completed == 0:
+        flash("Unable to generate a plan. At least one participant must complete all preference questions.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
     
     # Initialize planner and generate plan
     planner = ActivityPlanner(activity_id)
@@ -452,3 +655,42 @@ def finalize_plan(activity_id):
     
     flash("The plan has been finalized and all participants have been notified.", "success")
     return redirect(url_for('main.view_plan', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/delete', methods=['POST'])
+@login_required
+def delete_activity(activity_id):
+    """Delete an activity."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to delete this activity.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        # Delete associated participants, plans, and preferences
+        Plan.query.filter_by(activity_id=activity_id).delete()
+        
+        # Delete all participants of the activity
+        participants = Participant.query.filter_by(activity_id=activity_id).all()
+        for participant in participants:
+            # Delete preferences for each participant
+            db.session.execute(
+                'DELETE FROM preferences WHERE participant_id = :participant_id',
+                {'participant_id': participant.id}
+            )
+        
+        Participant.query.filter_by(activity_id=activity_id).delete()
+        
+        # Delete the activity
+        db.session.delete(activity)
+        db.session.commit()
+        
+        flash("Activity deleted successfully.", "success")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to delete activity: {str(e)}")
+        flash("Failed to delete activity. Please try again.", "error")
+    
+    return redirect(url_for('main.dashboard'))

@@ -20,12 +20,20 @@
                         <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
                             Return to Activity
                         </a>
+                        <form method="POST" action="{{ url_for('main.self_reset_progress', activity_id=activity.id) }}" style="display: inline; margin-top: 10px;" onsubmit="return confirm('Are you sure you want to restart the questionnaire? This will reset your responses and you will need to answer all questions again.');">
+                            <button type="submit" class="btn btn-sm btn-outline-warning mt-3">
+                                <i class="fas fa-redo"></i> Start Over with New Questions
+                            </button>
+                        </form>
                     </div>
                 {% else %}
                     <p class="lead mb-4">Please answer the following questions to help us plan the perfect activity for your group.</p>
                     
                     <div id="questions-container">
                         <!-- Questions will be rendered here -->
+                        <div id="question-debug" style="display: none;">
+                            <!-- For debugging only -->
+                        </div>
                     </div>
                     
                     <div class="text-center mt-4">
@@ -43,6 +51,46 @@
 <script>
     // Pass questions data to the JavaScript
     window.questionsBatch = {{ questions|tojson }};
+    
+    // For debugging - show the raw questions data in the debug div
+    document.addEventListener('DOMContentLoaded', function() {
+        const debugDiv = document.getElementById('question-debug');
+        if (debugDiv && window.questionsBatch) {
+            const debugButton = document.createElement('button');
+            debugButton.textContent = "Show/Hide Questions Debug";
+            debugButton.className = "btn btn-sm btn-outline-secondary mt-3";
+            debugButton.style.display = "none"; // Hide by default
+            
+            debugButton.addEventListener('click', function() {
+                if (debugDiv.style.display === 'none') {
+                    debugDiv.style.display = 'block';
+                } else {
+                    debugDiv.style.display = 'none';
+                }
+            });
+            
+            // Add the button after questions container
+            const questionsContainer = document.getElementById('questions-container');
+            if (questionsContainer) {
+                questionsContainer.parentNode.insertBefore(debugButton, questionsContainer.nextSibling);
+            }
+            
+            // Display raw question data
+            const pre = document.createElement('pre');
+            pre.textContent = JSON.stringify(window.questionsBatch, null, 2);
+            debugDiv.appendChild(pre);
+            
+            // Check if we're in debug mode via URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('debug') === 'true') {
+                debugButton.style.display = 'block';
+                // Show the debug div
+                setTimeout(() => {
+                    debugButton.click();
+                }, 500);
+            }
+        }
+    });
 </script>
 {% endblock %}
 {% endblock %}
