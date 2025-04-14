@@ -10,7 +10,7 @@
         <div class="col-lg-8">
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3 class="mb-0">Group Activity</h3>
+                    <h3 class="mb-0">{{ activity.title or "Group Activity" }}</h3>
                     <span class="badge {% if activity.status == 'planning' %}bg-info{% elif activity.status == 'planned' %}bg-primary{% elif activity.status == 'finalized' %}bg-success{% else %}bg-secondary{% endif %}">
                         {{ activity.status.capitalize() }}
                     </span>

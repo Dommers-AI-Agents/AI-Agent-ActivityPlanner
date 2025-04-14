@@ -29,13 +29,9 @@ def dashboard():
 @login_required
 def create_activity():
     """Create a new activity and invite participants."""
-    # When creating an activity, link it to the current user
-    planner = ActivityPlanner()
-    activity = planner.create_activity()
-    activity.creator_id = current_user.id
-    db.session.commit()
     if request.method == 'POST':
         # Process form data
+        activity_name = request.form.get('activity_name')
         organizer_name = request.form.get('organizer_name')
         organizer_phone = request.form.get('organizer_phone')
         organizer_email = request.form.get('organizer_email')
@@ -43,6 +39,9 @@ def create_activity():
         # Create new activity
         planner = ActivityPlanner()
         activity = planner.create_activity()
+        activity.title = activity_name
+        activity.creator_id = current_user.id
+        db.session.commit()
         
         # Add organizer as first participant
         organizer = planner.add_participant(

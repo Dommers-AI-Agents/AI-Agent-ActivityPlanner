@@ -13,6 +13,18 @@
                 <form method="POST" action="{{ url_for('main.create_activity') }}">
                     <div class="card mb-4">
                         <div class="card-header">
+                            <h4 class="mb-0">Activity Information</h4>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="activity_name" class="form-label">Activity Name *</label>
+                                <input type="text" class="form-control" id="activity_name" name="activity_name" placeholder="Weekend Hike, Game Night, etc." required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-header">
                             <h4 class="mb-0">Your Information</h4>
                         </div>
                         <div class="card-body">
