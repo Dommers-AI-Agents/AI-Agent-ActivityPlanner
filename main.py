@@ -27,9 +27,15 @@ def get_app():
 if __name__ == '__main__':
     # Get port from environment variable or default to 5000
     port = int(os.environ.get('PORT', 5000))
-    
+
+    cert_path = os.path.join(os.path.dirname(__file__), 'localhost+2.pem')
+    key_path = os.path.join(os.path.dirname(__file__), 'localhost+2-key.pem')
+        
     # Run the application
-    app.run(host='0.0.0.0', port=port)
+    app.run(
+        host='0.0.0.0', port=port,
+        ssl_context=(cert_path, key_path)
+        )
 
 @main_bp.route('/')
 def index():

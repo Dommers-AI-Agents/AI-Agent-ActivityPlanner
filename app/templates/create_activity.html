@@ -5,68 +5,130 @@
 {% block content %}
 <div class="container mt-5">
     <div class="row justify-content-center">
-        <div class="col-lg-8">
+        <div class="col-lg-10">
             <div class="form-card">
                 <h2>Create New Group Activity</h2>
-                <p class="lead mb-4">Start by providing your information and inviting participants.</p>
+                <p class="lead mb-4">Let's plan your group activity with the help of our AI planner.</p>
                 
-                <form method="POST" action="{{ url_for('main.create_activity') }}">
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h4 class="mb-0">Activity Information</h4>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label for="activity_name" class="form-label">Activity Name *</label>
-                                <input type="text" class="form-control" id="activity_name" name="activity_name" placeholder="Weekend Hike, Game Night, etc." required>
+                <div class="row">
+                    <!-- Left column with conversation UI -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h4 class="mb-0">Tell me about your activity</h4>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h4 class="mb-0">Your Information</h4>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-4 mb-3">
-                                    <label for="organizer_name" class="form-label">Your Name *</label>
-                                    <input type="text" class="form-control" id="organizer_name" name="organizer_name" required>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <label for="organizer_phone" class="form-label">Your Phone Number *</label>
-                                    <input type="tel" class="form-control" id="organizer_phone" name="organizer_phone" placeholder="(555) 123-4567" required>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <label for="organizer_email" class="form-label">Your Email *</label>
-                                    <input type="email" class="form-control" id="organizer_email" name="organizer_email" placeholder="you@example.com" required>
-                                </div>
+                            <div class="card-body d-flex flex-column" style="height: 500px;">
+                                <div id="ai-conversation-container" class="h-100"></div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="card mb-4">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0">Invite Participants</h4>
-                            <button type="button" id="add-participant-btn" class="btn btn-sm btn-primary">
-                                <i class="fas fa-plus"></i> Add Participant
-                            </button>
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted mb-3">Add people you want to invite to your group activity. Each participant will receive an SMS with a link to share their preferences.</p>
+                    <!-- Right column with form -->
+                    <div class="col-lg-6">
+                        <form method="POST" action="{{ url_for('main.create_activity') }}" id="activity-form">
+                            <input type="hidden" name="ai_conversation_summary" id="ai-conversation-summary" value="">
+                            <input type="hidden" name="activity_type" id="activity-type" value="">
+                            <input type="hidden" name="special_considerations" id="special-considerations" value="">
                             
-                            <div id="participants-container">
-                                <!-- Participant entries will be added here by JavaScript -->
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Activity Information</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="activity_name" class="form-label">Activity Name *</label>
+                                        <input type="text" class="form-control" id="activity_name" name="activity_name" placeholder="Weekend Hike, Game Night, etc." required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="activity_description" class="form-label">Activity Description</label>
+                                        <textarea class="form-control" id="activity_description" name="activity_description" rows="3" placeholder="Brief description of the activity"></textarea>
+                                        <div class="form-text">This will be filled automatically based on your conversation with the AI.</div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h4 class="mb-0">Your Information</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label for="organizer_name" class="form-label">Your Name *</label>
+                                            <input type="text" class="form-control" id="organizer_name" name="organizer_name" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="organizer_phone" class="form-label">Your Phone Number *</label>
+                                            <input type="tel" class="form-control" id="organizer_phone" name="organizer_phone" placeholder="(555) 123-4567" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="organizer_email" class="form-label">Your Email *</label>
+                                            <input type="email" class="form-control" id="organizer_email" name="organizer_email" placeholder="you@example.com" required>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card mb-4">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h4 class="mb-0">Invite Participants</h4>
+                                    <button type="button" id="add-participant-btn" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-plus"></i> Add Participant
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted mb-3">Add people you want to invite to your group activity. Each participant will receive an SMS with a link to share their preferences.</p>
+                                    
+                                    <div id="participants-container">
+                                        <!-- Participant entries will be added here by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center mt-4">
+                                <button type="submit" class="btn btn-primary btn-lg">Create Activity</button>
+                            </div>
+                        </form>
                     </div>
-                    
-                    <div class="text-center mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg">Create Activity</button>
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+<script src="{{ url_for('static', filename='js/ai-conversation.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the AI conversation component
+        if (document.getElementById('ai-conversation-container')) {
+            initializeAIConversation('ai-conversation-container', {
+                onUpdateSummary: function(summary) {
+                    document.getElementById('ai-conversation-summary').value = summary;
+                    
+                    // Auto-fill activity description if it's empty
+                    const descriptionField = document.getElementById('activity_description');
+                    if (!descriptionField.value) {
+                        descriptionField.value = summary;
+                    }
+                },
+                onUpdateActivityType: function(type) {
+                    document.getElementById('activity-type').value = type;
+                    
+                    // Auto-suggest activity name if it's empty
+                    const nameField = document.getElementById('activity_name');
+                    if (!nameField.value && type) {
+                        nameField.value = type.charAt(0).toUpperCase() + type.slice(1);
+                    }
+                },
+                onUpdateConsiderations: function(considerations) {
+                    document.getElementById('special-considerations').value = considerations;
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}

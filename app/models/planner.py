@@ -711,3 +711,278 @@ class ActivityPlanner:
         
         db.session.commit()
         return plan
+    
+    def create_plan_from_claude(self, claude_plan):
+        if not self.activity:
+            self.load_activity()
+    
+        # Extract plan details from Claude's response
+        title = claude_plan.get('title', 'Group Activity Plan')
+        description = claude_plan.get('description', '')
+        
+        # Add considerations to the description if provided
+        considerations = claude_plan.get('considerations')
+        if considerations:
+            description += f"\n\nSpecial Considerations:\n{considerations}"
+        
+        # Add alternatives to the description if provided
+        alternatives = claude_plan.get('alternatives')
+        if alternatives and isinstance(alternatives, list):
+            description += "\n\nAlternative Options:\n"
+            for i, alt in enumerate(alternatives, 1):
+                description += f"{i}. {alt}\n"
+        
+        # Process schedule
+        schedule = claude_plan.get('schedule', [])
+        
+        # Convert schedule to JSON string
+        schedule_json = json.dumps(schedule)
+        
+        # Create the plan
+        plan = Plan(
+            activity_id=self.activity_id,
+            title=title,
+            description=description,
+            schedule=schedule_json,
+            status='draft'
+        )
+        
+        current_app.db.session.add(plan)
+        current_app.db.session.commit()
+        
+        # Update activity status
+        self.activity.status = 'planned'
+        current_app.db.session.commit()
+        
+        return plan
+
+    def get_claude_conversation(self, participant_id=None):
+        """Get conversation history with AI for a participant or activity creator.
+        
+        Args:
+            participant_id (str, optional): The participant ID. If None, get creator conversation.
+            
+        Returns:
+            list: The conversation history.
+        """
+        from app.models.database import Message
+        
+        if not self.activity:
+            if not self.activity_id:
+                return []
+            self.load_activity()
+        
+        # Query messages from the database
+        query = Message.query.filter(Message.activity_id == self.activity_id)
+        
+        if participant_id:
+            query = query.filter(Message.participant_id == participant_id)
+        else:
+            # For creator, participant_id is None
+            query = query.filter(Message.participant_id.is_(None))
+        
+        # Order by creation time
+        messages = query.order_by(Message.created_at).all()
+        
+        # Convert to the format expected by Claude service
+        conversation = []
+        for msg in messages:
+            role = "user" if msg.direction == "incoming" else "assistant"
+            conversation.append({
+                "role": role,
+                "content": msg.content
+            })
+        
+        return conversation
+
+    def save_conversation_message(self, message, is_user=True, participant_id=None):
+        """Save a message in the conversation history.
+        
+        Args:
+            message (str): The message content.
+            is_user (bool): Whether this is a user message.
+            participant_id (str, optional): The participant ID. If None, this is a creator message.
+            
+        Returns:
+            Message: The saved message.
+        """
+        from app.models.database import Message
+        
+        if not self.activity:
+            if not self.activity_id:
+                raise ValueError("No activity ID provided")
+            self.load_activity()
+        
+        # Create message
+        direction = "incoming" if is_user else "outgoing"
+        channel = "web"  # Or "voice" if implemented
+        
+        message_obj = Message(
+            activity_id=self.activity_id,
+            participant_id=participant_id,
+            direction=direction,
+            channel=channel,
+            content=message
+        )
+        
+        current_app.db.session.add(message_obj)
+        current_app.db.session.commit()
+        
+        return message_obj
+
+    def process_claude_input(self, message, participant_id=None, conversation_history=None):
+        """Process user input with Claude and save results.
+        
+        Args:
+            message (str): The user message.
+            participant_id (str, optional): The participant ID. If None, this is from the creator.
+            conversation_history (list, optional): The conversation history.
+                If None, it will be loaded from the database.
+                
+        Returns:
+            dict: Claude's response with extracted information/preferences.
+        """
+        if not conversation_history:
+            conversation_history = self.get_claude_conversation(participant_id)
+        
+        # Save the user message
+        self.save_conversation_message(message, is_user=True, participant_id=participant_id)
+        
+        # Process with Claude
+        if participant_id:
+            # Get activity info
+            activity_info = {
+                'title': self.activity.title,
+                'description': self.activity.description,
+                'status': self.activity.status
+            }
+            
+            # Process participant input
+            result = claude_service.process_participant_input(
+                message,
+                conversation_history,
+                activity_info
+            )
+            
+            # Save extracted preferences
+            if result.get('extracted_preferences'):
+                preferences = result['extracted_preferences']
+                
+                for category, prefs in preferences.items():
+                    for key, value in prefs.items():
+                        if value:  # Only save if we have a value
+                            self.save_preference(participant_id, category, key, value)
+        else:
+            # Process creator input
+            result = claude_service.process_activity_creator_input(message, conversation_history)
+        
+        # Save the assistant's response
+        self.save_conversation_message(result.get('message', ''), is_user=False, participant_id=participant_id)
+        
+        return result
+
+    def revise_plan_with_claude(self, plan_id, feedback):
+        """Revise a plan with Claude based on feedback.
+        
+        Args:
+            plan_id (str): The plan ID.
+            feedback (str): The feedback on the plan.
+            
+        Returns:
+            Plan: The revised plan.
+        """
+        plan = Plan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan with ID {plan_id} not found")
+        
+        # Get current plan details
+        current_plan = {
+            'title': plan.title,
+            'description': plan.description,
+            'schedule': json.loads(plan.schedule) if plan.schedule else []
+        }
+        
+        # Construct prompt for Claude
+        system_prompt = """
+        You are an AI-powered Activity Planner that revises activity plans based on feedback.
+        
+        Your task is to analyze the feedback and modify the existing plan to address concerns or suggestions.
+        
+        Format your response as JSON with the following structure:
+        {
+            "title": "Revised title for the activity",
+            "description": "Revised description of the activity plan",
+            "schedule": [
+                {"time": "Start time", "activity": "Description of this part of the activity"},
+                {"time": "Next time", "activity": "Description of the next part"}
+            ],
+            "revision_notes": "Notes explaining what changes were made and why"
+        }
+        """
+        
+        message = f"""
+        I need to revise an activity plan based on feedback. Here is the current plan:
+        
+        Title: {current_plan['title']}
+        
+        Description:
+        {current_plan['description']}
+        
+        Schedule:
+        {json.dumps(current_plan['schedule'], indent=2)}
+        
+        Feedback received:
+        {feedback}
+        
+        Please revise the plan to address this feedback while keeping what works.
+        """
+        
+        try:
+            # Call Claude API
+            messages = [{"role": "user", "content": message}]
+            response = claude_service._call_claude_api(system_prompt, messages)
+            
+            # Parse the response
+            try:
+                response_content = response.get("content", [])[0].get("text", "")
+                revised_plan = json.loads(response_content)
+                
+                # Update the plan
+                plan.title = revised_plan.get('title', plan.title)
+                
+                # Update description, including revision notes
+                new_description = revised_plan.get('description', plan.description)
+                revision_notes = revised_plan.get('revision_notes', '')
+                
+                if revision_notes:
+                    new_description += f"\n\nRevision Notes:\n{revision_notes}"
+                
+                plan.description = new_description
+                
+                # Update schedule if provided
+                new_schedule = revised_plan.get('schedule')
+                if new_schedule:
+                    plan.schedule = json.dumps(new_schedule)
+                
+                # Update status
+                plan.status = 'revised'
+                
+                current_app.db.session.commit()
+                
+                return plan
+                
+            except (json.JSONDecodeError, IndexError) as e:
+                current_app.logger.error(f"Failed to parse Claude response: {str(e)}")
+                # Append feedback to description as fallback
+                plan.description += f"\n\nFeedback received:\n{feedback}\n\nNote: This feedback has been noted but not yet addressed in the plan."
+                plan.status = 'revised'
+                current_app.db.session.commit()
+                return plan
+                
+        except Exception as e:
+            current_app.logger.error(f"Claude API call failed: {str(e)}")
+            # Append feedback to description as fallback
+            plan.description += f"\n\nFeedback received:\n{feedback}\n\nNote: This feedback has been noted but not yet addressed in the plan."
+            plan.status = 'revised'
+            current_app.db.session.commit()
+            return plan

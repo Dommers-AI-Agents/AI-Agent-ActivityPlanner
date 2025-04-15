@@ -43,6 +43,10 @@ def create_app(config=None):
     sms_service.init_app(app)
     email_service.init_app(app)
 
+    # Initialize Claude services
+    from app.services.claude_service import claude_service
+    claude_service.init_app(app)
+
     # User loader for Flask-Login
     @login_manager.user_loader
     def load_user(user_id):
@@ -53,10 +57,12 @@ def create_app(config=None):
     from app.views.main import main_bp
     from app.views.api import api_bp
     from app.views.auth import auth_bp
+    from app.views.ai_nlp import ai_nlp_bp
     
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(auth_bp)
+    app.register_blueprint(ai_nlp_bp, url_prefix='/api/ai')
 
     # Create database tables if needed (development only)
     if app.config['ENV'] == 'development':

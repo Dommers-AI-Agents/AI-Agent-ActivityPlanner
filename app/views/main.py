@@ -35,6 +35,11 @@ def create_activity():
         organizer_name = request.form.get('organizer_name')
         organizer_phone = request.form.get('organizer_phone')
         organizer_email = request.form.get('organizer_email')
+
+        # Check for AI conversation data
+        ai_conversation_summary = request.form.get('ai_conversation_summary')
+        activity_type = request.form.get('activity_type')
+        special_considerations = request.form.get('special_considerations')
         
         # Create new activity
         planner = ActivityPlanner()
@@ -42,6 +47,9 @@ def create_activity():
         activity.title = activity_name
         activity.creator_id = current_user.id
         db.session.commit()
+
+        if activity_type:
+            activity.description = activity.description or ai_conversation_summary
         
         # Add organizer as first participant
         organizer = planner.add_participant(
@@ -349,6 +357,18 @@ def activity_questions(activity_id):
     
     # For debugging - check if we're getting the new questions format
     current_app.logger.info(f"Getting questions batch for participant {participant_id} with status {participant.status}")
+    
+    # Check if we should use conversational interface
+    use_conversation = request.args.get('conversation', 'false') == 'true'
+
+    return render_template(
+        'questions.html',
+        activity=activity,
+        participant=participant,
+        questions=questions,
+        all_complete=all_complete,
+        use_conversation=use_conversation
+    )
     
     # Get the questions
     questions = planner.generate_questions_batch(participant_id)
@@ -693,3 +713,34 @@ def delete_activity(activity_id):
         flash("Failed to delete activity. Please try again.", "error")
     
     return redirect(url_for('main.dashboard'))
+
+@main_bp.route('/activity/<activity_id>/generate-claude-plan')
+def generate_claude_plan(activity_id):
+    """Generate an activity plan using Claude."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Initialize planner
+    planner = ActivityPlanner(activity_id)
+    
+    try:
+        # Collect all preferences
+        all_preferences = planner.get_all_preferences()
+        
+        # Generate plan with Claude
+        result = claude_service.generate_activity_plan(activity_id, all_preferences)
+        
+        # Create the plan
+        plan = planner.create_plan_from_claude(result)
+        
+        # Update activity status
+        activity.status = 'planned'
+        db.session.commit()
+        
+        flash("Plan generated successfully with AI assistance!", "success")
+    except Exception as e:
+        current_app.logger.error(f"Error generating plan with Claude: {str(e)}")
+        flash(f"Error generating plan: {str(e)}", "error")
+    
+    # Redirect to plan page
+    return redirect(url_for('main.view_plan', activity_id=activity_id))

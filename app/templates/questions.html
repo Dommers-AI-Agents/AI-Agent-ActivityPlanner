@@ -7,90 +7,607 @@
     <input type="hidden" id="activity-id" value="{{ activity.id }}">
     
     <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="question-container">
-                <h2 class="mb-4">Your Preferences</h2>
-                
-                {% if all_complete %}
-                    <div class="alert alert-success text-center">
-                        <h4 class="alert-heading">Thank you!</h4>
-                        <p>You've answered all the questions. Your preferences have been saved.</p>
-                        <hr>
-                        <p class="mb-0">The group activity plan will be created once everyone has provided their input.</p>
-                        <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
-                            Return to Activity
-                        </a>
-                        <form method="POST" action="{{ url_for('main.self_reset_progress', activity_id=activity.id) }}" style="display: inline; margin-top: 10px;" onsubmit="return confirm('Are you sure you want to restart the questionnaire? This will reset your responses and you will need to answer all questions again.');">
-                            <button type="submit" class="btn btn-sm btn-outline-warning mt-3">
-                                <i class="fas fa-redo"></i> Start Over with New Questions
-                            </button>
-                        </form>
-                    </div>
-                {% else %}
-                    <p class="lead mb-4">Please answer the following questions to help us plan the perfect activity for your group.</p>
-                    
-                    <div id="questions-container">
-                        <!-- Questions will be rendered here -->
-                        <div id="question-debug" style="display: none;">
-                            <!-- For debugging only -->
+        <div class="col-lg-10">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3 class="mb-0">Share Your Preferences</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h5>Hello{% if participant.name %}, {{ participant.name }}{% endif %}!</h5>
+                                <p>I'm your AI Activity Planner. Let's have a conversation about what you'd enjoy for this group activity.</p>
+                                <p>You can tell me as much or as little as you want - whether you have specific preferences or are open to anything!</p>
+                            </div>
+                            
+                            {% if all_complete %}
+                                <div class="alert alert-success text-center">
+                                    <h4 class="alert-heading">Thank you!</h4>
+                                    <p>You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
+                                    <hr>
+                                    <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
+                                        Return to Activity
+                                    </a>
+                                </div>
+                            {% else %}
+                                <!-- AI Conversation Box -->
+                                <div id="ai-preference-chat" class="conversation-container mb-4" style="height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 15px;">
+                                    <!-- Conversation will be inserted here by JavaScript -->
+                                </div>
+                                
+                                <!-- Input Area -->
+                                <div class="input-group mb-3">
+                                    <button class="btn btn-outline-secondary toggle-voice-btn" type="button">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                    <input type="text" id="user-message" class="form-control" placeholder="Type your preferences or ask a question...">
+                                    <button class="btn btn-primary send-message-btn" type="button">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                                
+                                <div class="text-center mt-4">
+                                    <button id="submit-preferences-btn" class="btn btn-success btn-lg">
+                                        <i class="fas fa-check"></i> I've Shared All My Preferences
+                                    </button>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-6">
+                            {% if not all_complete %}
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h4 class="mb-0">Preference Summary</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="preferences-summary">
+                                            <p class="text-muted">As you share your preferences, I'll gather them here so you can review what I've understood.</p>
+                                            
+                                            <!-- Preference categories -->
+                                            <div class="preference-category mb-3">
+                                                <h5><i class="fas fa-heart"></i> Activity Interests</h5>
+                                                <div id="activity-interests-summary" class="preference-content">
+                                                    <span class="text-muted">None shared yet</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="preference-category mb-3">
+                                                <h5><i class="fas fa-calendar"></i> Timing & Availability</h5>
+                                                <div id="timing-summary" class="preference-content">
+                                                    <span class="text-muted">None shared yet</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="preference-category mb-3">
+                                                <h5><i class="fas fa-dollar-sign"></i> Budget</h5>
+                                                <div id="budget-summary" class="preference-content">
+                                                    <span class="text-muted">None shared yet</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="preference-category mb-3">
+                                                <h5><i class="fas fa-utensils"></i> Food & Dietary</h5>
+                                                <div id="food-summary" class="preference-content">
+                                                    <span class="text-muted">None shared yet</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="preference-category mb-3">
+                                                <h5><i class="fas fa-exclamation-circle"></i> Special Considerations</h5>
+                                                <div id="special-considerations-summary" class="preference-content">
+                                                    <span class="text-muted">None shared yet</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <h4 class="mb-0"><i class="fas fa-check-circle"></i> Preferences Completed</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Thank you for sharing your preferences! Here's a summary of what I understand about what you'd like:</p>
+                                        
+                                        <div id="final-preferences-summary">
+                                            <!-- This will be populated with the saved preferences -->
+                                            {% if preferences %}
+                                                <ul class="list-group list-group-flush">
+                                                {% for category, prefs in preferences.items() %}
+                                                    <li class="list-group-item">
+                                                        <strong>{{ category|capitalize }}:</strong>
+                                                        <ul>
+                                                        {% for key, value in prefs.items() %}
+                                                            <li>{{ key|replace('_', ' ')|capitalize }}: {{ value }}</li>
+                                                        {% endfor %}
+                                                        </ul>
+                                                    </li>
+                                                {% endfor %}
+                                                </ul>
+                                            {% else %}
+                                                <p class="text-muted">You indicated you're open to any suggestions!</p>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <div class="alert alert-info mt-3">
+                                            <p><i class="fas fa-info-circle"></i> The activity organizer will be notified that you've completed your preferences.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Information about the activity -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4 class="mb-0">About This Activity</h4>
+                </div>
+                <div class="card-body">
+                    <h5>{{ activity.title or "Group Activity" }}</h5>
+                    {% if activity.description %}
+                        <p>{{ activity.description }}</p>
+                    {% endif %}
                     
-                    <div class="text-center mt-4">
-                        <button id="submit-answers-btn" class="btn btn-primary btn-lg">
-                            Continue
-                        </button>
+                    <p><strong>Organizer:</strong> 
+                    {% set organizer = activity.participants[0] %}
+                    {{ organizer.name or "Unnamed Organizer" }}
+                    </p>
+                    
+                    <p><strong>Status:</strong> 
+                        <span class="badge {% if activity.status == 'planning' %}bg-info{% elif activity.status == 'planned' %}bg-primary{% elif activity.status == 'finalized' %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ activity.status.capitalize() }}
+                        </span>
+                    </p>
+                    
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Activity
+                        </a>
                     </div>
-                {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
 {% block extra_js %}
 <script>
-    // Pass questions data to the JavaScript
-    window.questionsBatch = {{ questions|tojson }};
-    
-    // For debugging - show the raw questions data in the debug div
     document.addEventListener('DOMContentLoaded', function() {
-        const debugDiv = document.getElementById('question-debug');
-        if (debugDiv && window.questionsBatch) {
-            const debugButton = document.createElement('button');
-            debugButton.textContent = "Show/Hide Questions Debug";
-            debugButton.className = "btn btn-sm btn-outline-secondary mt-3";
-            debugButton.style.display = "none"; // Hide by default
+        // Initialize variables
+        const activityId = document.getElementById('activity-id').value;
+        const chatContainer = document.getElementById('ai-preference-chat');
+        const userInput = document.getElementById('user-message');
+        const sendButton = document.querySelector('.send-message-btn');
+        const voiceButton = document.querySelector('.toggle-voice-btn');
+        const submitButton = document.getElementById('submit-preferences-btn');
+        
+        // Preference categories for mapping extracted information
+        const preferenceCategories = {
+            activity: {
+                element: document.getElementById('activity-interests-summary'),
+                keys: ['activity_type', 'physical_exertion', 'learning_preference']
+            },
+            timing: {
+                element: document.getElementById('timing-summary'),
+                keys: ['preferred_day', 'preferred_time', 'duration']
+            },
+            budget: {
+                element: document.getElementById('budget-summary'),
+                keys: ['budget_range']
+            },
+            food: {
+                element: document.getElementById('food-summary'),
+                keys: ['meals_included', 'dietary_restrictions']
+            },
+            special: {
+                element: document.getElementById('special-considerations-summary'),
+                keys: ['accessibility_needs', 'additional_info']
+            }
+        };
+        
+        // Collected preferences
+        let collectedPreferences = {
+            contact: {},
+            activity: {},
+            timing: {},
+            group: {},
+            meals: {},
+            requirements: {}
+        };
+        
+        // Speech recognition setup
+        let recognition = null;
+        let isRecording = false;
+        
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
             
-            debugButton.addEventListener('click', function() {
-                if (debugDiv.style.display === 'none') {
-                    debugDiv.style.display = 'block';
-                } else {
-                    debugDiv.style.display = 'none';
+            recognition.onresult = function(event) {
+                const transcript = Array.from(event.results)
+                    .map(result => result[0])
+                    .map(result => result.transcript)
+                    .join('');
+                    
+                userInput.value = transcript;
+            };
+            
+            recognition.onerror = function(event) {
+                console.error('Speech recognition error', event.error);
+                toggleVoiceRecording(false);
+            };
+            
+            voiceButton.addEventListener('click', function() {
+                toggleVoiceRecording(!isRecording);
+            });
+        } else {
+            voiceButton.disabled = true;
+            voiceButton.title = 'Speech recognition not supported in your browser';
+        }
+        
+        // Add initial AI message
+        if (chatContainer) {
+            addMessage('assistant', "Hi there! I'd love to hear about your preferences for this group activity. Feel free to tell me what kinds of activities you enjoy, any schedule constraints, dietary needs, or anything else! You can be as specific or as open as you'd like.");
+        }
+        
+        // Event listeners
+        if (sendButton) {
+            sendButton.addEventListener('click', handleSendMessage);
+        }
+        
+        if (userInput) {
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleSendMessage();
                 }
             });
+        }
+        
+        if (submitButton) {
+            submitButton.addEventListener('click', function() {
+                // Confirm before submitting final preferences
+                if (confirm('Are you ready to submit your preferences? You won\'t be able to change them after submission.')) {
+                    submitFinalPreferences();
+                }
+            });
+        }
+        
+        // Function to toggle voice recording
+        function toggleVoiceRecording(start) {
+            if (!recognition) return;
             
-            // Add the button after questions container
-            const questionsContainer = document.getElementById('questions-container');
-            if (questionsContainer) {
-                questionsContainer.parentNode.insertBefore(debugButton, questionsContainer.nextSibling);
+            isRecording = start;
+            
+            if (start) {
+                recognition.start();
+                voiceButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                voiceButton.classList.remove('btn-outline-secondary');
+                voiceButton.classList.add('btn-danger');
+            } else {
+                recognition.stop();
+                voiceButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                voiceButton.classList.remove('btn-danger');
+                voiceButton.classList.add('btn-outline-secondary');
+            }
+        }
+        
+        // Function to handle sending messages
+        function handleSendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage('user', message);
+            userInput.value = '';
+            
+            // Stop recording if active
+            if (isRecording) {
+                toggleVoiceRecording(false);
             }
             
-            // Display raw question data
-            const pre = document.createElement('pre');
-            pre.textContent = JSON.stringify(window.questionsBatch, null, 2);
-            debugDiv.appendChild(pre);
+            // Process message and get AI response
+            processUserMessage(message);
+        }
+        
+        // Function to add a message to the chat
+        function addMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role === 'user' ? 'text-end' : ''} mb-3`;
             
-            // Check if we're in debug mode via URL parameter
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('debug') === 'true') {
-                debugButton.style.display = 'block';
-                // Show the debug div
-                setTimeout(() => {
-                    debugButton.click();
-                }, 500);
+            const bubble = document.createElement('div');
+            bubble.className = `d-inline-block px-3 py-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
+            bubble.style.maxWidth = '80%';
+            bubble.textContent = content;
+            
+            messageDiv.appendChild(bubble);
+            chatContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // Add text-to-speech for assistant messages
+            if (role === 'assistant' && 'speechSynthesis' in window) {
+                const speakButton = document.createElement('button');
+                speakButton.className = 'btn btn-sm text-muted p-0 ms-2';
+                speakButton.innerHTML = '🔊';
+                speakButton.title = 'Listen';
+                speakButton.type = 'button';
+                
+                speakButton.addEventListener('click', function() {
+                    const utterance = new SpeechSynthesisUtterance(content);
+                    window.speechSynthesis.speak(utterance);
+                });
+                
+                bubble.appendChild(document.createElement('br'));
+                bubble.appendChild(speakButton);
             }
+        }
+        
+        // Function to process user message and generate AI response
+        function processUserMessage(message) {
+            // In a real implementation, this would call the backend API that uses NLP
+            // For this example, we'll use a simulated response with setTimeout
+            
+            // Indicate the AI is "thinking"
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'typing-indicator mb-3';
+            typingIndicator.innerHTML = '<div class="d-inline-block px-3 py-2 rounded bg-light"><span class="spinner-grow spinner-grow-sm"></span> Thinking...</div>';
+            chatContainer.appendChild(typingIndicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            setTimeout(() => {
+                // Remove typing indicator
+                chatContainer.removeChild(typingIndicator);
+                
+                // Process message and extract preferences
+                const result = extractPreferences(message);
+                
+                // Update collected preferences
+                Object.keys(result.preferences).forEach(category => {
+                    Object.assign(collectedPreferences[category], result.preferences[category]);
+                });
+                
+                // Update preference summary
+                updatePreferenceSummary();
+                
+                // Add AI response
+                addMessage('assistant', result.response);
+                
+                // Save preferences to server
+                if (Object.keys(result.preferences).some(category => 
+                    Object.keys(result.preferences[category]).length > 0)) {
+                    savePreferences();
+                }
+            }, 1500);
+        }
+        
+        // Function to extract preferences from user message
+        function extractPreferences(message) {
+            const lowerMessage = message.toLowerCase();
+            const result = {
+                preferences: {
+                    contact: {},
+                    activity: {},
+                    timing: {},
+                    group: {},
+                    meals: {},
+                    requirements: {}
+                },
+                response: ""
+            };
+            
+            // Simple rule-based preference extraction
+            // In a real implementation, this would use NLP
+            
+            // Activity preferences
+            if (lowerMessage.includes('outdoor') || lowerMessage.includes('hike') || lowerMessage.includes('walk')) {
+                result.preferences.activity.activity_type = "Outdoor";
+                result.response = "I see you enjoy outdoor activities! Would you prefer something relaxed like a casual walk, or something more active like hiking?";
+            }
+            else if (lowerMessage.includes('indoor') || lowerMessage.includes('museum') || lowerMessage.includes('gallery')) {
+                result.preferences.activity.activity_type = "Indoor";
+                result.response = "Indoor activities sound great! Museums, galleries, or other indoor venues can be perfect for groups. Any specific indoor activities you particularly enjoy?";
+            }
+            else if (lowerMessage.includes('food') || lowerMessage.includes('restaurant') || lowerMessage.includes('dinner')) {
+                result.preferences.activity.activity_type = "Food";
+                result.preferences.meals.meals_included = "Yes";
+                result.response = "A food-focused activity sounds delicious! Do you have any dietary preferences or restrictions I should note?";
+            }
+            else if (lowerMessage.includes('movie') || lowerMessage.includes('film') || lowerMessage.includes('theater')) {
+                result.preferences.activity.activity_type = "Entertainment";
+                result.response = "Movies or theater sounds like a fun choice! Do you have any genres you particularly enjoy or avoid?";
+            }
+            else if (lowerMessage.includes('game') || lowerMessage.includes('board game') || lowerMessage.includes('card')) {
+                result.preferences.activity.activity_type = "Games";
+                result.response = "Game night is always fun! Do you prefer competitive games, cooperative ones, or a mix?";
+            }
+            
+            // Physical activity level
+            if (lowerMessage.includes('active') || lowerMessage.includes('energetic') || lowerMessage.includes('exercise')) {
+                result.preferences.activity.physical_exertion = "High";
+            }
+            else if (lowerMessage.includes('moderate') || lowerMessage.includes('some walking')) {
+                result.preferences.activity.physical_exertion = "Medium";
+            }
+            else if (lowerMessage.includes('relax') || lowerMessage.includes('chill') || lowerMessage.includes('not active')) {
+                result.preferences.activity.physical_exertion = "Low";
+            }
+            
+            // Timing preferences
+            if (lowerMessage.includes('weekend')) {
+                result.preferences.timing.preferred_day = "Weekend";
+            }
+            else if (lowerMessage.includes('weekday')) {
+                result.preferences.timing.preferred_day = "Weekday";
+            }
+            
+            if (lowerMessage.includes('morning')) {
+                result.preferences.timing.preferred_time = "Morning";
+            }
+            else if (lowerMessage.includes('afternoon')) {
+                result.preferences.timing.preferred_time = "Afternoon";
+            }
+            else if (lowerMessage.includes('evening')) {
+                result.preferences.timing.preferred_time = "Evening";
+            }
+            
+            // Duration
+            if (lowerMessage.includes('short') || lowerMessage.includes('quick') || lowerMessage.includes('brief')) {
+                result.preferences.timing.duration = "1-2 hours";
+            }
+            else if (lowerMessage.includes('half day') || lowerMessage.includes('few hours')) {
+                result.preferences.timing.duration = "3-4 hours";
+            }
+            else if (lowerMessage.includes('full day') || lowerMessage.includes('all day')) {
+                result.preferences.timing.duration = "Full day";
+            }
+            
+            // Budget preferences
+            if (lowerMessage.includes('cheap') || lowerMessage.includes('budget') || lowerMessage.includes('inexpensive')) {
+                result.preferences.activity.budget_range = "$";
+            }
+            else if (lowerMessage.includes('moderate price') || lowerMessage.includes('mid-range')) {
+                result.preferences.activity.budget_range = "$";
+            }
+            else if (lowerMessage.includes('expensive') || lowerMessage.includes('high-end') || lowerMessage.includes('luxury')) {
+                result.preferences.activity.budget_range = "$$";
+            }
+            
+            // Dietary preferences
+            if (lowerMessage.includes('vegetarian')) {
+                result.preferences.meals.dietary_restrictions = "Vegetarian";
+            }
+            else if (lowerMessage.includes('vegan')) {
+                result.preferences.meals.dietary_restrictions = "Vegan";
+            }
+            else if (lowerMessage.includes('gluten')) {
+                result.preferences.meals.dietary_restrictions = "Gluten-free";
+            }
+            else if (lowerMessage.includes('allerg')) {
+                result.preferences.requirements.accessibility_needs = "Food allergies";
+            }
+            
+            // Accessibility needs
+            if (lowerMessage.includes('wheelchair') || lowerMessage.includes('accessible')) {
+                result.preferences.requirements.accessibility_needs = "Wheelchair accessible";
+            }
+            
+            // Handle "anything is fine" type responses
+            if ((lowerMessage.includes('anything') || lowerMessage.includes('whatever') || 
+                lowerMessage.includes('open to') || lowerMessage.includes('flexible')) && 
+                lowerMessage.includes('fine')) {
+                
+                result.preferences.requirements.additional_info = "Flexible on most aspects";
+                
+                if (Object.keys(result.preferences).every(category => 
+                    Object.keys(result.preferences[category]).length === 0)) {
+                    result.response = "Thanks for letting me know you're flexible! To help create the best plan, could you share if there's anything you particularly enjoy or want to avoid?";
+                } else {
+                    result.response = "I appreciate your flexibility! I've noted your preferences and will keep in mind that you're open to other options as well.";
+                }
+            }
+            
+            // If no preferences were detected and no response set yet
+            if (Object.keys(result.preferences).every(category => 
+                Object.keys(result.preferences[category]).length === 0) && !result.response) {
+                
+                result.response = "Thanks for sharing! Could you tell me a bit more about what kinds of activities you enjoy, or any schedule constraints you might have?";
+            }
+            
+            return result;
+        }
+        
+        // Function to update preference summary display
+        function updatePreferenceSummary() {
+            // Update each category summary
+            Object.keys(preferenceCategories).forEach(category => {
+                const categoryInfo = preferenceCategories[category];
+                const element = categoryInfo.element;
+                
+                if (!element) return;
+                
+                let content = '';
+                let hasContent = false;
+                
+                // Check all possible sources for this category
+                Object.keys(collectedPreferences).forEach(prefCategory => {
+                    Object.keys(collectedPreferences[prefCategory]).forEach(key => {
+                        if (categoryInfo.keys.includes(key)) {
+                            content += `<div><strong>${key.replace(/_/g, ' ')}:</strong> ${collectedPreferences[prefCategory][key]}</div>`;
+                            hasContent = true;
+                        }
+                    });
+                });
+                
+                if (hasContent) {
+                    element.innerHTML = content;
+                }
+            });
+        }
+        
+        // Function to save preferences to server
+        function savePreferences() {
+            // In a real implementation, this would send data to the server
+            // For this example, we'll simulate with console logs
+            console.log('Saving preferences:', JSON.stringify(collectedPreferences));
+            
+            // Simulate AJAX call
+            /*
+            fetch(`/api/activities/${activityId}/participants/preferences`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: collectedPreferences }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+            */
+        }
+        
+        // Function to submit final preferences
+        function submitFinalPreferences() {
+            // Simulate sending final preferences to server
+            console.log('Submitting final preferences');
+            
+            // In a real implementation, call the server endpoint
+            fetch(`/activity/${activityId}/submit-answers`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    answers: collectedPreferences,
+                    is_final: true
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirect to completed view
+                    window.location.href = `/activity/${activityId}/questions?completed=true`;
+                } else {
+                    alert('There was a problem saving your preferences. Please try again.');
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('There was a problem connecting to the server. Please try again later.');
+            });
         }
     });
 </script>
-{% endblock %}
 {% endblock %}

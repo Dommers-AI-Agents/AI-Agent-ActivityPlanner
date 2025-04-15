@@ -13,6 +13,10 @@ class Config:
     # SQLAlchemy settings
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Claude settings
+    ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+    CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-sonnet-20240229')
     
     # Twilio settings
     TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
