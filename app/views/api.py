@@ -72,6 +72,30 @@ def sms_webhook():
     </Response>
     """
 
+@api_bp.route('/activities/<activity_id>/converse', methods=['POST'])
+def converse_with_planner(activity_id):
+    """Handle conversational input for planning."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Get the input from request
+    data = request.json
+    if not data or 'input' not in data:
+        return jsonify({'error': 'Missing input data'}), 400
+    
+    input_text = data['input']
+    
+    # Initialize planner and generate a quick plan
+    planner = ActivityPlanner(activity_id)
+    plan = planner.generate_quick_plan(input_text)
+    
+    return jsonify({
+        'success': True,
+        'activity_id': activity_id,
+        'plan_id': plan.id,
+        'plan': plan.to_dict()
+    })
+
 @api_bp.route('/activities/<activity_id>/participants', methods=['POST'])
 def add_participants(activity_id):
     """Add participants to an activity."""

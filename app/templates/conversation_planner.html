@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Plan Your Activity - AI Group Planner{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <input type="hidden" id="activity-id" value="{{ activity.id }}">
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3 class="mb-0">Plan Your Group Activity</h3>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Tell me about your activity ideas, and I'll help you create the perfect plan.</p>
+                    
+                    <div id="conversation-container" class="mb-4">
+                        <div class="chat-history" id="chat-history">
+                            <!-- Chat messages will appear here -->
+                        </div>
+                    </div>
+                    
+                    <form id="conversation-form" class="mt-3">
+                        <div class="input-group">
+                            <input type="text" id="user-input" class="form-control" 
+                                   placeholder="e.g., '8 people, outdoor activity, budget around $30 per person'">
+                            <button class="btn btn-primary" type="submit">Send</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div id="plan-container" class="card mb-4" style="display: none;">
+                <div class="card-header">
+                    <h3 class="mb-0">Your Activity Plan</h3>
+                </div>
+                <div class="card-body" id="plan-content">
+                    <!-- Plan will appear here -->
+                </div>
+                <div class="card-footer">
+                    <button id="accept-plan-btn" class="btn btn-success">Accept Plan & Invite Participants</button>
+                    <button id="refine-plan-btn" class="btn btn-outline-primary">Refine Plan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// JavaScript to handle the conversation interface
+document.addEventListener('DOMContentLoaded', function() {
+    const conversationForm = document.getElementById('conversation-form');
+    const userInput = document.getElementById('user-input');
+    const chatHistory = document.getElementById('chat-history');
+    const planContainer = document.getElementById('plan-container');
+    const planContent = document.getElementById('plan-content');
+    const activityId = document.getElementById('activity-id').value;
+    
+    // Handle form submission
+    conversationForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const input = userInput.value.trim();
+        if (!input) return;
+        
+        // Add user message to chat
+        addMessageToChat('user', input);
+        userInput.value = '';
+        
+        // Show thinking indicator
+        addMessageToChat('system', 'Thinking...', 'thinking');
+        
+        // Send to server
+        fetch(`/api/activities/${activityId}/converse`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ input: input }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove thinking indicator
+            document.querySelector('.thinking').remove();
+            
+            if (data.success) {
+                // Display the plan
+                displayPlan(data.plan);
+                
+                // Add assistant response
+                addMessageToChat('assistant', 'I\'ve created a plan based on your input. How does this look?');
+                
+                // Show the plan container
+                planContainer.style.display = 'block';
+            } else {
+                addMessageToChat('assistant', 'Sorry, I had trouble creating a plan. Could you provide more details?');
+            }
+        })
+        .catch(error => {
+            document.querySelector('.thinking').remove();
+            addMessageToChat('assistant', 'Sorry, something went wrong. Please try again.');
+            console.error('Error:', error);
+        });
+    });
+    
+    // Function to add message to chat
+    function addMessageToChat(sender, text, className) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${sender}-message ${className || ''}`;
+        messageDiv.innerHTML = `<p>${text}</p>`;
+        chatHistory.appendChild(messageDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    
+    // Function to display the plan
+    function displayPlan(plan) {
+        planContent.innerHTML = `
+            <h4>${plan.title}</h4>
+            <div class="plan-description">${plan.description.replace(/\n/g, '<br>')}</div>
+            
+            ${plan.schedule ? `
+            <h5 class="mt-4">Schedule</h5>
+            <ul class="list-group">
+                ${plan.schedule.map(item => `
+                    <li class="list-group-item">
+                        <strong>${item.time}:</strong> ${item.activity}
+                    </li>
+                `).join('')}
+            </ul>
+            ` : ''}
+        `;
+    }
+    
+    // Handle plan buttons
+    document.getElementById('accept-plan-btn').addEventListener('click', function() {
+        window.location.href = `/activity/${activityId}/invite`;
+    });
+    
+    document.getElementById('refine-plan-btn').addEventListener('click', function() {
+        planContainer.style.display = 'none';
+        userInput.focus();
+        addMessageToChat('assistant', 'What would you like to change about the plan?');
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

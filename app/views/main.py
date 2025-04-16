@@ -107,7 +107,10 @@ def create_activity():
                         current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
         
         # Redirect to the activity page
-        return redirect(url_for('main.activity_detail', activity_id=activity.id))
+        #return redirect(url_for('main.activity_detail', activity_id=activity.id))
+
+        # Instead of redirecting to activity detail, redirect to conversation planner
+        return redirect(url_for('main.conversation_planner', activity_id=activity.id))
     
     # Show the create activity form
     return render_template('create_activity.html')
@@ -744,3 +747,17 @@ def generate_claude_plan(activity_id):
     
     # Redirect to plan page
     return redirect(url_for('main.view_plan', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/conversation-planner')
+@login_required
+def conversation_planner(activity_id):
+    """Conversation-based activity planning interface."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    return render_template('conversation_planner.html', activity=activity)

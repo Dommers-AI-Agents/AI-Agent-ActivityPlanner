@@ -986,3 +986,45 @@ class ActivityPlanner:
             plan.status = 'revised'
             current_app.db.session.commit()
             return plan
+        
+    def generate_quick_plan(self, conversation_input):
+        """Generate a plan based on minimal conversational input."""
+        # Parse the conversation input for key parameters
+        parsed_input = self._parse_conversation_input(conversation_input)
+        
+        # Generate a plan with these minimal parameters
+        # Similar to the existing generate_plan method but with defaults
+        # for missing preferences
+        
+        # Create and return the plan
+        plan = Plan(
+            activity_id=self.activity_id,
+            title=f"Quick Plan: {parsed_input.get('activity_type', 'Group Activity')}",
+            description=self._generate_description_from_input(parsed_input),
+            schedule=json.dumps(self._generate_schedule_from_input(parsed_input)),
+            status='draft'
+        )
+        
+        db.session.add(plan)
+        db.session.commit()
+        
+        return plan
+
+    def _parse_conversation_input(self, input_text):
+        """Extract key parameters from conversational input."""
+        # Simple parsing logic - in a real implementation you would use NLP
+        parsed = {}
+        
+        # Extract group size
+        if re.search(r'(\d+)\s+people', input_text, re.IGNORECASE):
+            parsed['group_size'] = int(re.search(r'(\d+)\s+people', input_text, re.IGNORECASE).group(1))
+        
+        # Extract activity level
+        if "nothing too active" in input_text.lower():
+            parsed['activity_level'] = "low"
+        elif "active" in input_text.lower():
+            parsed['activity_level'] = "high"
+        
+        # More parsing logic for other parameters
+        
+        return parsed
