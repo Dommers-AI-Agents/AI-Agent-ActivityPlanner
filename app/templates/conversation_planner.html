@@ -89,13 +89,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Display the plan
                 displayPlan(data.plan);
                 
-                // Add assistant response
-                addMessageToChat('assistant', 'I\'ve created a plan based on your input. How does this look?');
+                // Add assistant response using the message from Claude if available
+                const assistantMessage = data.message || 'I\'ve created a plan based on your input. How does this look?';
+                addMessageToChat('assistant', assistantMessage);
                 
                 // Show the plan container
                 planContainer.style.display = 'block';
+                
+                // Add first message if this is first interaction
+                if (chatHistory.querySelectorAll('.chat-message').length <= 2) {
+                    addMessageToChat('assistant', 'Feel free to refine the plan by providing more details or making specific requests about what you\'d like to change.');
+                }
             } else {
-                addMessageToChat('assistant', 'Sorry, I had trouble creating a plan. Could you provide more details?');
+                const errorMessage = data.error || 'Sorry, I had trouble creating a plan. Could you provide more details?';
+                addMessageToChat('assistant', errorMessage);
             }
         })
         .catch(error => {
@@ -113,6 +120,9 @@ document.addEventListener('DOMContentLoaded', function() {
         chatHistory.appendChild(messageDiv);
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
+    
+    // Add welcome message on load
+    addMessageToChat('assistant', 'Hello! I\'m your AI Activity Planner. Tell me about the group activity you\'d like to plan. Include details like the number of people, any special requirements, location preferences, and budget constraints. The more details you provide, the better I can tailor the plan to your needs.');
     
     // Function to display the plan
     function displayPlan(plan) {

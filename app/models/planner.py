@@ -692,27 +692,164 @@ class ActivityPlanner:
         
         return schedule
     
-    def revise_plan(self, plan_id, feedback):
+    def process_conversation_input(self, input_text):
+        """Process conversational input and generate a plan based on minimal information."""
+        import json
+        import re
+        from datetime import datetime, timedelta
+        import random
+        
+        # Extract basic information from text
+        group_size = 8  # Default
+        activity_level = "low"  # Default
+        budget = "$25 per person"  # Default
+        
+        # Basic parsing of input text
+        if re.search(r'(\d+)\s+people', input_text, re.IGNORECASE):
+            group_size = int(re.search(r'(\d+)\s+people', input_text, re.IGNORECASE).group(1))
+        
+        # Extract activity level preference
+        if any(word in input_text.lower() for word in ["inactive", "nothing too active", "low", "easy", "simple"]):
+            activity_level = "low"
+        elif any(word in input_text.lower() for word in ["active", "energetic", "sports", "workout"]):
+            activity_level = "high"
+        else:
+            activity_level = "moderate"
+        
+        # Extract budget if mentioned
+        budget_match = re.search(r'\$(\d+)', input_text)
+        if budget_match:
+            budget = f"${budget_match.group(1)} per person"
+        
+        # Define activity options based on activity level
+        low_activities = ["Casual Dinner", "Board Game Night", "Movie Night", "Art Gallery Visit", "Wine Tasting"]
+        moderate_activities = ["Bowling", "Mini Golf", "Easy Hike", "Museum Tour", "Cooking Class"]
+        high_activities = ["Bike Ride", "Kayaking", "Hiking Trip", "Sports Tournament", "Dance Class"]
+        
+        # Choose appropriate activity based on activity level
+        if activity_level == "low":
+            activity_name = random.choice(low_activities)
+        elif activity_level == "high":
+            activity_name = random.choice(high_activities)
+        else:
+            activity_name = random.choice(moderate_activities)
+        
+        # Generate plan title
+        title = f"{activity_name} for {group_size} People"
+        
+        # Generate plan description
+        description = f"A {activity_level}-impact activity for a group of {group_size} people.\n\n"
+        description += f"This plan includes {activity_name.lower()} with an approximate budget of {budget}.\n\n"
+        
+        # Add detailed description based on activity
+        if "Dinner" in activity_name:
+            description += "The group will enjoy dinner at a restaurant with a relaxed atmosphere, perfect for conversation and bonding."
+        elif "Game" in activity_name:
+            description += "The group will enjoy a selection of board games suitable for players of all experience levels."
+        elif "Movie" in activity_name:
+            description += "The group will enjoy watching a film together, followed by discussion time."
+        elif "Hike" in activity_name or "Bike" in activity_name:
+            description += "The group will enjoy an outdoor activity on a scenic trail suitable for the desired activity level."
+        
+        # Create a simple schedule
+        start_time = datetime.now().replace(hour=18, minute=0, second=0)  # Default to 6 PM
+        duration = 3  # hours
+        
+        schedule = []
+        current_time = start_time
+        
+        # Add meeting time
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Meet at the venue"
+        })
+        
+        # Add start of activity
+        current_time = current_time + timedelta(minutes=15)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": f"Begin {activity_name}"
+        })
+        
+        # Add break if duration is long enough
+        if duration > 2:
+            current_time = current_time + timedelta(hours=1, minutes=30)
+            schedule.append({
+                "time": current_time.strftime("%-I:%M %p"),
+                "activity": "Break for refreshments"
+            })
+        
+        # Add end time
+        current_time = start_time + timedelta(hours=duration)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Activity concludes"
+        })
+        
+        # Create plan in database
+        plan = Plan(
+            activity_id=self.activity_id,
+            title=title,
+            description=description,
+            schedule=json.dumps(schedule),
+            status='draft'
+        )
+        
+        db.session.add(plan)
+        db.session.commit()
+        
+        # Update activity status
+        self.activity.status = 'planned'
+        db.session.commit()
+    
+        return plan
+
+    def revise_plan(self, plan_id, feedback, participant_id=None):
         """Revise an existing plan based on feedback."""
         plan = Plan.query.get(plan_id)
         if not plan:
             raise ValueError(f"Plan with ID {plan_id} not found")
             
+        # Store the feedback
+        if participant_id:
+            self.save_preference(participant_id, 'feedback', 'plan_feedback', feedback)
+        
+        # Get all feedback for this plan
+        all_feedback = []
+        for participant in Participant.query.filter_by(activity_id=self.activity_id).all():
+            participant_prefs = self.get_participant_preferences(participant.id)
+            if 'feedback' in participant_prefs and 'plan_feedback' in participant_prefs['feedback']:
+                all_feedback.append({
+                    'participant_id': participant.id,
+                    'participant_name': participant.name,
+                    'feedback': participant_prefs['feedback']['plan_feedback']
+                })
+        
         # In a real implementation, this would use AI to revise the plan
-        # For this example, we'll just update the plan with the feedback
+        # based on all feedback collected
         
-        original_plan = plan.to_dict()
+        # For this example, create a revised plan incorporating feedback
+        revised_description = plan.description + "\n\nRevisions based on feedback:\n"
+        for fb in all_feedback:
+            revised_description += f"- {fb['participant_name'] or 'Anonymous'}: {fb['feedback']}\n"
         
-        # Append feedback to description
-        plan.description += f"\n\nRevisions based on feedback:\n{feedback}"
+        # Create new plan object with revised content
+        revised_plan = Plan(
+            activity_id=self.activity_id,
+            title=f"Revised: {plan.title}",
+            description=revised_description,
+            schedule=plan.schedule,  # Reuse schedule for simplicity
+            status='revised'
+        )
         
-        # Update status
-        plan.status = 'revised'
-        
+        db.session.add(revised_plan)
         db.session.commit()
-        return plan
+        
+        return revised_plan
     
     def create_plan_from_claude(self, claude_plan):
+        from flask import current_app
+        
         if not self.activity:
             self.load_activity()
     
@@ -738,23 +875,29 @@ class ActivityPlanner:
         # Convert schedule to JSON string
         schedule_json = json.dumps(schedule)
         
-        # Create the plan
-        plan = Plan(
-            activity_id=self.activity_id,
-            title=title,
-            description=description,
-            schedule=schedule_json,
-            status='draft'
-        )
-        
-        current_app.db.session.add(plan)
-        current_app.db.session.commit()
-        
-        # Update activity status
-        self.activity.status = 'planned'
-        current_app.db.session.commit()
-        
-        return plan
+        try:
+            # Create the plan
+            plan = Plan(
+                activity_id=self.activity_id,
+                title=title,
+                description=description,
+                schedule=schedule_json,
+                status='draft'
+            )
+            
+            db.session.add(plan)
+            db.session.commit()
+            
+            # Update activity status
+            self.activity.status = 'planned'
+            db.session.commit()
+            
+            return plan
+        except Exception as e:
+            current_app.logger.error(f"Error creating plan from Claude response: {str(e)}")
+            # Roll back session if error
+            db.session.rollback()
+            raise
 
     def get_claude_conversation(self, participant_id=None):
         """Get conversation history with AI for a participant or activity creator.
@@ -807,28 +950,45 @@ class ActivityPlanner:
             Message: The saved message.
         """
         from app.models.database import Message
+        from flask import current_app
         
-        if not self.activity:
-            if not self.activity_id:
-                raise ValueError("No activity ID provided")
-            self.load_activity()
-        
-        # Create message
-        direction = "incoming" if is_user else "outgoing"
-        channel = "web"  # Or "voice" if implemented
-        
-        message_obj = Message(
-            activity_id=self.activity_id,
-            participant_id=participant_id,
-            direction=direction,
-            channel=channel,
-            content=message
-        )
-        
-        current_app.db.session.add(message_obj)
-        current_app.db.session.commit()
-        
-        return message_obj
+        try:
+            if not self.activity:
+                if not self.activity_id:
+                    raise ValueError("No activity ID provided")
+                self.load_activity()
+            
+            # Create message
+            direction = "incoming" if is_user else "outgoing"
+            channel = "web"  # Or "voice" if implemented
+            
+            # Ensure message is a string
+            if not isinstance(message, str):
+                message = str(message)
+            
+            message_obj = Message(
+                activity_id=self.activity_id,
+                participant_id=participant_id,
+                direction=direction,
+                channel=channel,
+                content=message
+            )
+            
+            current_app.db.session.add(message_obj)
+            current_app.db.session.commit()
+            
+            return message_obj
+            
+        except Exception as e:
+            current_app.logger.error(f"Error saving conversation message: {str(e)}")
+            # Try to roll back the session if there was an error
+            try:
+                current_app.db.session.rollback()
+            except:
+                pass
+            
+            # Return None to indicate failure, but don't crash
+            return None
 
     def process_claude_input(self, message, participant_id=None, conversation_history=None):
         """Process user input with Claude and save results.
@@ -842,44 +1002,65 @@ class ActivityPlanner:
         Returns:
             dict: Claude's response with extracted information/preferences.
         """
+        from app.services.claude_service import claude_service
+        from flask import current_app
+        
         if not conversation_history:
             conversation_history = self.get_claude_conversation(participant_id)
         
-        # Save the user message
-        self.save_conversation_message(message, is_user=True, participant_id=participant_id)
+        # Log the request to Claude
+        current_app.logger.info(f"Sending request to Claude API with message: {message[:100]}...")
         
-        # Process with Claude
-        if participant_id:
-            # Get activity info
-            activity_info = {
-                'title': self.activity.title,
-                'description': self.activity.description,
-                'status': self.activity.status
+        try:
+            # Process with Claude
+            if participant_id:
+                # Get activity info
+                activity_info = {
+                    'title': self.activity.title,
+                    'description': self.activity.description,
+                    'status': self.activity.status
+                }
+                
+                # Process participant input
+                result = claude_service.process_participant_input(
+                    message,
+                    conversation_history,
+                    activity_info
+                )
+                
+                # Save extracted preferences
+                if result.get('extracted_preferences'):
+                    preferences = result['extracted_preferences']
+                    
+                    for category, prefs in preferences.items():
+                        for key, value in prefs.items():
+                            if value:  # Only save if we have a value
+                                self.save_preference(participant_id, category, key, value)
+            else:
+                # Process creator input
+                result = claude_service.process_activity_creator_input(message, conversation_history)
+            
+            # Log Claude's response
+            current_app.logger.info(f"Claude API response: {result.get('message', '')[:100]}...")
+            
+            # Save the assistant's response
+            self.save_conversation_message(result.get('message', ''), is_user=False, participant_id=participant_id)
+            
+            return result
+            
+        except Exception as e:
+            current_app.logger.error(f"Error processing Claude input: {str(e)}")
+            
+            # Generate a fallback response
+            fallback_response = {
+                "message": "I'm sorry, I'm having trouble connecting to my language processing system. Let me try to understand your request based on keywords instead.",
+                "extracted_info": {}
             }
             
-            # Process participant input
-            result = claude_service.process_participant_input(
-                message,
-                conversation_history,
-                activity_info
-            )
+            # Save the fallback response
+            self.save_conversation_message(fallback_response["message"], is_user=False, participant_id=participant_id)
             
-            # Save extracted preferences
-            if result.get('extracted_preferences'):
-                preferences = result['extracted_preferences']
-                
-                for category, prefs in preferences.items():
-                    for key, value in prefs.items():
-                        if value:  # Only save if we have a value
-                            self.save_preference(participant_id, category, key, value)
-        else:
-            # Process creator input
-            result = claude_service.process_activity_creator_input(message, conversation_history)
-        
-        # Save the assistant's response
-        self.save_conversation_message(result.get('message', ''), is_user=False, participant_id=participant_id)
-        
-        return result
+            return fallback_response
 
     def revise_plan_with_claude(self, plan_id, feedback):
         """Revise a plan with Claude based on feedback.
@@ -989,23 +1170,102 @@ class ActivityPlanner:
         
     def generate_quick_plan(self, conversation_input):
         """Generate a plan based on minimal conversational input."""
+        import json
+        import re
+        from datetime import datetime, timedelta
+        import random
+        
         # Parse the conversation input for key parameters
         parsed_input = self._parse_conversation_input(conversation_input)
         
-        # Generate a plan with these minimal parameters
-        # Similar to the existing generate_plan method but with defaults
-        # for missing preferences
+        # Extract basic information from text
+        group_size = parsed_input.get('group_size', 6)  # Default
+        activity_level = parsed_input.get('activity_level', 'moderate')  # Default
+        budget = parsed_input.get('budget', "$25 per person")  # Default
         
-        # Create and return the plan
+        # Define activity options based on activity level
+        low_activities = ["Casual Dinner", "Board Game Night", "Movie Night", "Art Gallery Visit", "Wine Tasting"]
+        moderate_activities = ["Bowling", "Mini Golf", "Easy Hike", "Museum Tour", "Cooking Class"]
+        high_activities = ["Bike Ride", "Kayaking", "Hiking Trip", "Sports Tournament", "Dance Class"]
+        
+        # Choose appropriate activity based on activity level
+        if activity_level == "low":
+            activity_name = random.choice(low_activities)
+        elif activity_level == "high":
+            activity_name = random.choice(high_activities)
+        else:
+            activity_name = random.choice(moderate_activities)
+            
+        # Override with specific activity type if found in parsed input
+        if 'activity_type' in parsed_input:
+            activity_name = parsed_input['activity_type']
+        
+        # Generate plan title
+        title = f"{activity_name} for {group_size} People"
+        
+        # Generate plan description
+        description = f"A {activity_level}-impact activity for a group of {group_size} people.\n\n"
+        description += f"This plan includes {activity_name.lower()} with an approximate budget of {budget}.\n\n"
+        
+        # Add detailed description based on activity
+        if "Dinner" in activity_name:
+            description += "The group will enjoy dinner at a restaurant with a relaxed atmosphere, perfect for conversation and bonding."
+        elif "Game" in activity_name:
+            description += "The group will enjoy a selection of board games suitable for players of all experience levels."
+        elif "Movie" in activity_name:
+            description += "The group will enjoy watching a film together, followed by discussion time."
+        elif "Hike" in activity_name or "Bike" in activity_name:
+            description += "The group will enjoy an outdoor activity on a scenic trail suitable for the desired activity level."
+        
+        # Create a simple schedule
+        start_time = datetime.now().replace(hour=18, minute=0, second=0)  # Default to 6 PM
+        duration = 3  # hours
+        
+        schedule = []
+        current_time = start_time
+        
+        # Add meeting time
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Meet at the venue"
+        })
+        
+        # Add start of activity
+        current_time = current_time + timedelta(minutes=15)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": f"Begin {activity_name}"
+        })
+        
+        # Add break if duration is long enough
+        if duration > 2:
+            current_time = current_time + timedelta(hours=1, minutes=30)
+            schedule.append({
+                "time": current_time.strftime("%-I:%M %p"),
+                "activity": "Break for refreshments"
+            })
+        
+        # Add end time
+        current_time = start_time + timedelta(hours=duration)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Activity concludes"
+        })
+        
+        # Create plan in database
         plan = Plan(
             activity_id=self.activity_id,
-            title=f"Quick Plan: {parsed_input.get('activity_type', 'Group Activity')}",
-            description=self._generate_description_from_input(parsed_input),
-            schedule=json.dumps(self._generate_schedule_from_input(parsed_input)),
+            title=title,
+            description=description,
+            schedule=json.dumps(schedule),
             status='draft'
         )
         
         db.session.add(plan)
+        db.session.commit()
+        
+        # Update activity status
+        self.activity.status = 'planned'
         db.session.commit()
         
         return plan
@@ -1014,17 +1274,62 @@ class ActivityPlanner:
         """Extract key parameters from conversational input."""
         # Simple parsing logic - in a real implementation you would use NLP
         parsed = {}
+        lower_text = input_text.lower()
         
         # Extract group size
-        if re.search(r'(\d+)\s+people', input_text, re.IGNORECASE):
-            parsed['group_size'] = int(re.search(r'(\d+)\s+people', input_text, re.IGNORECASE).group(1))
+        group_size_match = re.search(r'(\d+)\s+people', input_text, re.IGNORECASE)
+        if group_size_match:
+            parsed['group_size'] = int(group_size_match.group(1))
         
         # Extract activity level
-        if "nothing too active" in input_text.lower():
+        if any(phrase in lower_text for phrase in ["nothing too active", "low activity", "relaxed", "casual", "easy"]):
             parsed['activity_level'] = "low"
-        elif "active" in input_text.lower():
+        elif any(phrase in lower_text for phrase in ["very active", "high activity", "energetic", "intense", "challenging"]):
             parsed['activity_level'] = "high"
+        elif any(phrase in lower_text for phrase in ["moderate", "medium", "average"]):
+            parsed['activity_level'] = "moderate"
         
-        # More parsing logic for other parameters
+        # Extract budget information
+        budget_match = re.search(r'\$(\d+)', input_text)
+        if budget_match:
+            budget_amount = budget_match.group(1)
+            parsed['budget'] = f"${budget_amount} per person"
+        
+        # Extract activity type
+        if "dinner" in lower_text or "restaurant" in lower_text or "eat" in lower_text:
+            parsed['activity_type'] = "Group Dinner"
+        elif "movie" in lower_text or "cinema" in lower_text or "film" in lower_text:
+            parsed['activity_type'] = "Movie Night"
+        elif "game" in lower_text or "board game" in lower_text:
+            parsed['activity_type'] = "Game Night"
+        elif "hike" in lower_text or "hiking" in lower_text or "trail" in lower_text:
+            parsed['activity_type'] = "Hiking Trip"
+        elif "museum" in lower_text or "gallery" in lower_text or "art" in lower_text:
+            parsed['activity_type'] = "Museum Visit"
+        elif "park" in lower_text or "picnic" in lower_text:
+            parsed['activity_type'] = "Park Outing"
+        elif "bowling" in lower_text:
+            parsed['activity_type'] = "Bowling"
+        elif "sports" in lower_text:
+            parsed['activity_type'] = "Sports Activity"
+        
+        # Extract location preferences
+        if "indoor" in lower_text or "inside" in lower_text:
+            parsed['location'] = "indoor"
+        elif "outdoor" in lower_text or "outside" in lower_text:
+            parsed['location'] = "outdoor"
+        
+        # Extract timing preferences
+        if "weekend" in lower_text:
+            parsed['day'] = "weekend"
+        elif "weekday" in lower_text:
+            parsed['day'] = "weekday"
+            
+        if "morning" in lower_text:
+            parsed['time'] = "morning"
+        elif "afternoon" in lower_text:
+            parsed['time'] = "afternoon"
+        elif "evening" in lower_text or "night" in lower_text:
+            parsed['time'] = "evening"
         
         return parsed

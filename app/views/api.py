@@ -74,7 +74,9 @@ def sms_webhook():
 
 @api_bp.route('/activities/<activity_id>/converse', methods=['POST'])
 def converse_with_planner(activity_id):
-    """Handle conversational input for planning."""
+    """Handle conversational input for planning using Claude AI."""
+    from app.services.claude_service import claude_service
+    
     # Get the activity
     activity = Activity.query.get_or_404(activity_id)
     
@@ -85,16 +87,73 @@ def converse_with_planner(activity_id):
     
     input_text = data['input']
     
-    # Initialize planner and generate a quick plan
+    # Initialize planner
     planner = ActivityPlanner(activity_id)
-    plan = planner.generate_quick_plan(input_text)
     
-    return jsonify({
-        'success': True,
-        'activity_id': activity_id,
-        'plan_id': plan.id,
-        'plan': plan.to_dict()
-    })
+    try:
+        # Process with Claude API
+        current_app.logger.info(f"Processing input with Claude: {input_text[:100]}...")
+        
+        # Get conversation history if any
+        conversation_history = planner.get_claude_conversation()
+        
+        # Save the user's message to the conversation
+        planner.save_conversation_message(input_text, is_user=True)
+        
+        # Process with Claude
+        claude_response = planner.process_claude_input(input_text, conversation_history=conversation_history)
+        
+        # Check if Claude could generate a response
+        if not claude_response or 'message' not in claude_response:
+            current_app.logger.warning("Claude API returned an empty or invalid response")
+            # Fall back to basic plan generation
+            plan = planner.generate_quick_plan(input_text)
+            
+            # Save a fallback message
+            planner.save_conversation_message(
+                "I've created a basic plan based on your input. Please let me know if you'd like to adjust anything.", 
+                is_user=False
+            )
+        else:
+            # Extract structured information from Claude's response and generate plan
+            current_app.logger.info("Claude extracted information, generating plan")
+            
+            # Create a plan with Claude's guidance
+            # Use extracted_info if available
+            if 'extracted_info' in claude_response and claude_response['extracted_info']:
+                plan = planner.generate_quick_plan(input_text)
+            else:
+                # Just use the basic plan generation if no structured info
+                plan = planner.generate_quick_plan(input_text)
+        
+        return jsonify({
+            'success': True,
+            'activity_id': activity_id,
+            'plan_id': plan.id,
+            'plan': plan.to_dict(),
+            'message': claude_response.get('message', "I've created a plan based on your input. How does this look?")
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in Claude conversation: {str(e)}")
+        
+        # Fall back to basic plan generation
+        try:
+            plan = planner.generate_quick_plan(input_text)
+            
+            return jsonify({
+                'success': True,
+                'activity_id': activity_id,
+                'plan_id': plan.id,
+                'plan': plan.to_dict(),
+                'message': "I had some trouble understanding all the details, but I've created a basic plan based on what I understood. Let me know if you'd like to adjust anything."
+            })
+        except Exception as fallback_error:
+            current_app.logger.error(f"Fallback plan generation failed: {str(fallback_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to process input and generate plan'
+            }), 500
 
 @api_bp.route('/activities/<activity_id>/participants', methods=['POST'])
 def add_participants(activity_id):

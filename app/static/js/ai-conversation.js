@@ -245,8 +245,24 @@ function processMessage(message) {
   } else if (lowerMessage.includes('suggest') || lowerMessage.includes('idea') || lowerMessage.includes('recommend')) {
     response.message = "I'd be happy to suggest some activities! To help me make better recommendations, could you tell me a bit about your group? How many people, age range, and any particular interests or constraints I should consider?";
     
+  } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+    response.message = "Hello! I'm here to help plan your group activity. What type of activity are you interested in? Or would you like me to suggest some ideas?";
   } else {
-    response.message = "Thanks for sharing your thoughts! To help plan the perfect activity, could you tell me more about your group? How many people will be participating, and are there any specific preferences or constraints I should know about?";
+    // Process input with API instead of hardcoded response
+    response.message = "I'm analyzing your input to create a personalized activity plan. Could you tell me more about your preferences for location, budget, or type of activity?";
+    
+    // Set a basic activity type if we can detect any keywords
+    if (lowerMessage.includes('budget')) {
+      response.considerations = "Budget is a priority";
+    }
+    if (lowerMessage.includes('people') || lowerMessage.includes('group')) {
+      const match = lowerMessage.match(/(\d+)\s+people/);
+      if (match) {
+        response.activityType = `Group activity for ${match[1]} people`;
+      } else {
+        response.activityType = "Group activity";
+      }
+    }
   }
   
   return response;

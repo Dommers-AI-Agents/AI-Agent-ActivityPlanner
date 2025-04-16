@@ -629,6 +629,26 @@ def submit_feedback(activity_id):
         plan=plan,
         participant=participant
     )
+@main_bp.route('/activity/<activity_id>/process-input', methods=['POST'])
+def process_conversation_input(activity_id):
+    """Process conversational input and generate a plan."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Get the input from the form
+    input_text = request.form.get('input_text', '')
+    
+    if not input_text:
+        flash("Please provide some details about your activity.", "warning")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    # Initialize planner and process input
+    planner = ActivityPlanner(activity_id)
+    plan = planner.process_conversation_input(input_text)
+    
+    # Redirect to the plan
+    flash("Plan generated based on your input!", "success")
+    return redirect(url_for('main.view_plan', activity_id=activity_id))
 
 @main_bp.route('/activity/<activity_id>/finalize')
 def finalize_plan(activity_id):

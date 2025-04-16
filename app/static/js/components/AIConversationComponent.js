@@ -109,8 +109,11 @@ const AIConversationComponent = () => {
       return "Game night is always fun! Do you have specific games in mind, or would you like me to suggest some based on your group size and preferences?";
     } else if (input.includes('suggest') || input.includes('idea') || input.includes('recommend')) {
       return "I'd be happy to suggest some activities! To help me make better recommendations, could you tell me a bit about your group? How many people, age range, and any particular interests or constraints I should consider?";
+    } else if (input.includes('hello') || input.includes('hi') || input.includes('hey')) {
+      return "Hello! I'm here to help plan your group activity. What type of activity are you interested in? Or would you like me to suggest some ideas?";
     } else {
-      return "Thanks for sharing your thoughts! To help plan the perfect activity, could you tell me more about your group? How many people will be participating, and are there any specific preferences or constraints I should know about?";
+      // More personalized fallback response
+      return "I'm analyzing your input to create a personalized activity plan. Could you tell me more about your preferences for location, budget, or type of activity?";
     }
   };
 

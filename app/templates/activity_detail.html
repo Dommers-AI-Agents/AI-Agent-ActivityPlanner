@@ -52,6 +52,26 @@
                     {% endif %}
                 </div>
             </div>
+            <!-- Add the Quick Plan Generation form here -->
+            {% if activity.status == 'planning' %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Plan Generation</h5>
+                </div>
+                <div class="card-body">
+                    <p>Tell us about your activity, and we'll generate a plan based on your input.</p>
+                    
+                    <form action="{{ url_for('main.process_conversation_input', activity_id=activity.id) }}" method="POST">
+                        <div class="mb-3">
+                            <label for="input_text" class="form-label">Your Activity Ideas</label>
+                            <textarea class="form-control" id="input_text" name="input_text" rows="3" 
+                              placeholder="Example: '8 people, nothing too active, prefer indoor activities due to weather'"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Generate Plan</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
             {% if current_user.is_authenticated and activity.creator_id == current_user.id %}
             <div class="card mb-4">
                 <div class="card-header">
