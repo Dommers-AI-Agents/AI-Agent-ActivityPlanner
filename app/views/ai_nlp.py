@@ -8,6 +8,7 @@ from app.services.claude_service import claude_service
 from app import db
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,92 @@ def process_activity_input():
         return jsonify({
             'error': 'Failed to process input',
             'message': 'I encountered an error processing your message. Please try again.'
+        }), 500
+
+@ai_nlp_bp.route('/planner/converse', methods=['POST'])
+def planner_converse():
+    """Handle conversational input for activity planning."""
+    data = request.json
+    if not data or 'input' not in data:
+        return jsonify({'error': 'Missing input data'}), 400
+    
+    input_text = data['input']
+    conversation_history = data.get('conversation_history', [])
+    
+    logger.info(f"Processing input with Claude: {input_text[:100]}...")
+    
+    # Check if Claude is available
+    api_key = current_app.config.get('ANTHROPIC_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return jsonify({
+            'success': False,
+            'message': "Claude AI is currently unavailable. Please try again later.",
+            'error': "API key not configured"
+        }), 503
+    
+    try:
+        # Process with Claude
+        result = claude_service.process_activity_creator_input(input_text, conversation_history)
+        
+        # Enhanced logging for debugging
+        logger.info(f"Claude response type: {type(result)}")
+        logger.info(f"Claude response: {result}")
+        
+        # Extract message and info
+        final_message = ""
+        extracted_info = {}
+        
+        # Handle different response types
+        if isinstance(result, dict):
+            # Direct dictionary response
+            final_message = result.get('message', '')
+            extracted_info = result.get('extracted_info', {})
+        elif isinstance(result, str):
+            # String response - check if it's JSON
+            if result.strip().startswith('{') and '"message"' in result:
+                try:
+                    parsed = json.loads(result)
+                    final_message = parsed.get('message', result)
+                    extracted_info = parsed.get('extracted_info', {})
+                except json.JSONDecodeError:
+                    # Not valid JSON, use as-is
+                    final_message = result
+            else:
+                # Regular string, use as-is
+                final_message = result
+        else:
+            # Fallback for unexpected types
+            final_message = str(result)
+            
+        # Create a clean response
+        response = {
+            'success': True,
+            'message': final_message,
+            'extracted_info': extracted_info
+        }
+        
+        # Add plan if activity is trip-like
+        if (len(input_text) > 100 and 
+            any(keyword in input_text.lower() for keyword in ['trip', 'itinerary', 'museum', 'schedule', 'plan', 'visit'])):
+            try:
+                # Create a plan from mock data
+                planner = ActivityPlanner()
+                mock_plan = claude_service._mock_generate_plan({})
+                response['plan'] = mock_plan
+            except Exception as e:
+                logger.error(f"Failed to generate plan: {str(e)}")
+        
+        logger.info(f"Final response: {response['message'][:100]}...")
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Error in Claude conversation: {str(e)}")
+        
+        # Only use generic error message when Claude API call completely fails
+        return jsonify({
+            'success': False,
+            'message': "There was an error connecting to the AI service. Please try again.",
+            'error': str(e)
         }), 500
 
 @ai_nlp_bp.route('/process_participant_input', methods=['POST'])
@@ -213,4 +300,71 @@ def synthesize_speech():
         return jsonify({
             'error': 'Failed to synthesize speech',
             'message': 'I encountered an error converting text to speech.'
+        }), 500
+
+@ai_nlp_bp.route('/test-claude', methods=['GET'])
+def test_claude():
+    """Test endpoint to directly call the Claude API."""
+    import requests
+    import os
+    import json
+    
+    logger.info("Testing Claude API connection...")
+    
+    # Hardcoded API key for testing
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    api_url = "https://api.anthropic.com/v1/messages"
+    model = "claude-3-opus-20240229"
+    
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    
+    data = {
+        "model": model,
+        "system": "You are a helpful assistant that keeps responses very brief.",
+        "messages": [{"role": "user", "content": "Hello, Claude! This is a test message."}],
+        "max_tokens": 100
+    }
+    
+    logger.info(f"API Request: {json.dumps(data)}")
+    logger.info(f"Headers: {headers}")
+    
+    try:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response body: {response.text[:1000]}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'response': result,
+                'message': "Claude API test successful!"
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'status_code': response.status_code,
+                'response_text': response.text,
+                'message': "Claude API test failed!"
+            }), 500
+    
+    except Exception as e:
+        logger.error(f"Error testing Claude API: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': "Exception while testing Claude API!"
         }), 500

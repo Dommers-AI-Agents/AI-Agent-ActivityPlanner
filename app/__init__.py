@@ -7,6 +7,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_login import LoginManager
+import logging
+from logging.handlers import RotatingFileHandler
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -20,6 +22,18 @@ def create_app(config=None):
     
     # Load configuration
     app.config.from_object('app.config.Config')
+
+    # Setup logging
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    file_handler = RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    file_handler.setLevel(logging.INFO)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('AI Group Planner startup')
     
     # Override config if provided
     if config:
@@ -46,6 +60,15 @@ def create_app(config=None):
     # Initialize Claude services
     from app.services.claude_service import claude_service
     claude_service.init_app(app)
+    
+    # Log Claude API key status
+    if app.config.get('ANTHROPIC_API_KEY'):
+        app.logger.info(f"Claude service initialized with API key: {app.config.get('ANTHROPIC_API_KEY')[:5]}...")
+    else:
+        app.logger.warning("No ANTHROPIC_API_KEY found in config. Claude API will not work correctly.")
+        # For testing purposes only - set a dummy key
+        app.config['ANTHROPIC_API_KEY'] = "dummy-key-for-testing"
+        app.logger.warning("Set dummy API key for testing. Real Claude API calls will fail.")
 
     # User loader for Flask-Login
     @login_manager.user_loader

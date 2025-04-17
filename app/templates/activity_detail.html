@@ -19,6 +19,13 @@
                     <h5 class="card-title">Activity Information</h5>
                     <p>Created: {{ activity.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
                     
+                    {% if activity.description %}
+                    <div class="activity-description mt-3">
+                        <h6>Activity Description:</h6>
+                        <div class="description-content" style="white-space: pre-line;">{{ activity.description }}</div>
+                    </div>
+                    {% endif %}
+                    
                     {% if participant %}
                         <div class="alert alert-info mt-3">
                             <h5>Welcome{% if participant.name %}, {{ participant.name }}{% endif %}!</h5>

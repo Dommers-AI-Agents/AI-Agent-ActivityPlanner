@@ -103,6 +103,32 @@
 <script src="{{ url_for('static', filename='js/ai-conversation.js') }}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        /* 
+        // Add a test button to check our Claude API connection - Commented out but kept for future use
+        const testButton = document.createElement('button');
+        testButton.textContent = 'Test Claude API';
+        testButton.className = 'btn btn-sm btn-info mb-3';
+        testButton.onclick = function(e) {
+            e.preventDefault();
+            fetch('/api/ai/test-claude')
+                .then(res => res.json())
+                .then(data => {
+                    console.log('Claude API test response:', data);
+                    alert('Check console for Claude API test results');
+                })
+                .catch(err => {
+                    console.error('Error testing Claude API:', err);
+                    alert('Error testing Claude API. Check console for details.');
+                });
+        };
+        
+        // Add the test button to the page
+        const container = document.getElementById('ai-conversation-container');
+        if (container) {
+            container.parentNode.insertBefore(testButton, container);
+        }
+        */
+        
         // Initialize the AI conversation component
         if (document.getElementById('ai-conversation-container')) {
             initializeAIConversation('ai-conversation-container', {

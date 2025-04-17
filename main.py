@@ -11,7 +11,10 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+print("Loading environment variables from .env file...")
+load_dotenv(verbose=True)
+print(f"ANTHROPIC_API_KEY available: {'Yes' if os.environ.get('ANTHROPIC_API_KEY') else 'No'}")
+print(f"CLAUDE_MODEL available: {'Yes' if os.environ.get('CLAUDE_MODEL') else 'No'}")
 
 main_bp = Blueprint('main', __name__)
 

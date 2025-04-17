@@ -86,6 +86,7 @@ class Activity(db.Model):
     creator_id = db.Column(db.String(36), db.ForeignKey('users.id', name='fk_activity_creator'), nullable=True)
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     title = db.Column(db.String(255), nullable=True)
+    description = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(50), default='planning', nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -122,6 +123,7 @@ class Activity(db.Model):
         return {
             'id': self.id,
             'title': self.title,
+            'description': self.description,
             'status': self.status,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),

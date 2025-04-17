@@ -16,7 +16,7 @@ class Config:
 
     # Claude settings
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-    CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-sonnet-20240229')
+    CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-opus-20240229')
     
     # Twilio settings
     TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')

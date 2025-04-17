@@ -38,6 +38,7 @@ def create_activity():
 
         # Check for AI conversation data
         ai_conversation_summary = request.form.get('ai_conversation_summary')
+        activity_description = request.form.get('activity_description')
         activity_type = request.form.get('activity_type')
         special_considerations = request.form.get('special_considerations')
         
@@ -46,10 +47,14 @@ def create_activity():
         activity = planner.create_activity()
         activity.title = activity_name
         activity.creator_id = current_user.id
+        
+        # Save the detailed activity description from the AI conversation
+        if activity_description:
+            activity.description = activity_description
+        elif activity_type:
+            activity.description = ai_conversation_summary
+            
         db.session.commit()
-
-        if activity_type:
-            activity.description = activity.description or ai_conversation_summary
         
         # Add organizer as first participant
         organizer = planner.add_participant(

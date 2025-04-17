@@ -80,10 +80,15 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({ input: input }),
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Response status:', response.status);
+            return response.json();
+        })
         .then(data => {
             // Remove thinking indicator
             document.querySelector('.thinking').remove();
+            
+            console.log('API response data:', data);
             
             if (data.success) {
                 // Display the plan
