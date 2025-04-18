@@ -9,8 +9,170 @@ from app import db
 import json
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
+
+def process_claude_response(raw_response):
+    """Process and clean Claude API responses for display to users.
+    
+    Args:
+        raw_response: The raw response from Claude API (can be string, dict, etc.)
+        
+    Returns:
+        dict: A cleaned and structured response with consistent format:
+            {
+                'message': Clean natural language message for the user,
+                'extracted_info': Dictionary of extracted data (if any),
+                'plan': Structured plan data (if any),
+                'success': Boolean indicating if processing was successful
+            }
+    """
+    logger.info(f"Processing Claude response of type: {type(raw_response)}")
+    
+    # Initialize the result structure
+    result = {
+        'message': '',
+        'extracted_info': {},
+        'plan': None,
+        'success': True
+    }
+    
+    try:
+        # Handle string responses
+        if isinstance(raw_response, str):
+            logger.debug(f"Processing string response: {raw_response[:100]}...")
+            
+            # Check if the string is JSON
+            if raw_response.strip().startswith('{') and '"message"' in raw_response:
+                try:
+                    parsed_json = json.loads(raw_response)
+                    logger.debug(f"Successfully parsed JSON from string response")
+                    
+                    # Extract message
+                    if 'message' in parsed_json:
+                        result['message'] = parsed_json['message']
+                    
+                    # Extract other fields if available
+                    if 'extracted_info' in parsed_json:
+                        result['extracted_info'] = parsed_json['extracted_info']
+                    
+                    if 'plan' in parsed_json:
+                        result['plan'] = parsed_json['plan']
+                        
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON from string: {e}")
+                    # Still use the original string as message
+                    result['message'] = raw_response
+            else:
+                # Not JSON, use as-is
+                result['message'] = raw_response
+        
+        # Handle dictionary responses
+        elif isinstance(raw_response, dict):
+            logger.debug(f"Processing dictionary response with keys: {raw_response.keys()}")
+            
+            # Extract message from the response
+            if 'message' in raw_response:
+                message = raw_response['message']
+                
+                # Check if the message is a JSON string
+                if isinstance(message, str) and message.strip().startswith('{') and '"message"' in message:
+                    try:
+                        # Parse nested JSON
+                        nested_json = json.loads(message)
+                        logger.debug(f"Found nested JSON in message field")
+                        
+                        if 'message' in nested_json:
+                            result['message'] = nested_json['message']
+                        
+                        if 'extracted_info' in nested_json:
+                            result['extracted_info'] = nested_json['extracted_info']
+                    except json.JSONDecodeError:
+                        # Use the original message if parsing fails
+                        result['message'] = message
+                else:
+                    # Use message as-is
+                    result['message'] = message
+            
+            # Handle error responses
+            if 'error' in raw_response:
+                logger.error(f"Error in Claude response: {raw_response['error']}")
+                result['success'] = False
+                if not result['message']:
+                    result['message'] = f"Error: {raw_response['error']}"
+            
+            # Extract extracted_info if available
+            if 'extracted_info' in raw_response:
+                result['extracted_info'] = raw_response['extracted_info']
+            
+            # Extract plan if available 
+            if 'plan' in raw_response:
+                result['plan'] = raw_response['plan']
+        
+        # Handle unexpected types
+        else:
+            logger.warning(f"Unexpected response type: {type(raw_response)}")
+            result['message'] = str(raw_response)
+            
+        # Clean the message
+        result['message'] = _clean_claude_message(result['message'])
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error processing Claude response: {str(e)}", exc_info=True)
+        return {
+            'message': "I apologize, but I encountered an error processing the response. Please try again.",
+            'extracted_info': {},
+            'plan': None,
+            'success': False
+        }
+
+def _clean_claude_message(message):
+    """Clean Claude's message for display.
+    
+    Args:
+        message (str): The raw message from Claude
+        
+    Returns:
+        str: The cleaned message
+    """
+    if not isinstance(message, str):
+        return str(message)
+    
+    # Remove any "```json" code blocks that might contain the response
+    message = re.sub(r'```json\s*(.*?)\s*```', r'\1', message, flags=re.DOTALL)
+    
+    # Remove any backslashes used to escape quotes
+    message = message.replace('\\"', '"')
+    
+    # Handle escaped newlines
+    message = message.replace('\\n', '\n')
+    
+    # Try to extract message from any remaining JSON structure
+    if message.strip().startswith('{') and '"message"' in message:
+        try:
+            # Use regex to extract just the message part
+            message_match = re.search(r'"message"\s*:\s*"(.*?)"(?:,|\})', message, re.DOTALL)
+            if message_match:
+                extracted = message_match.group(1)
+                # Unescape any remaining escaped characters
+                extracted = extracted.replace('\\n', '\n').replace('\\"', '"')
+                return extracted
+        except Exception as e:
+            logger.warning(f"Error extracting message from JSON with regex: {e}")
+            
+            # Try full JSON parsing if regex fails
+            try:
+                parsed = json.loads(message)
+                if 'message' in parsed:
+                    return parsed['message']
+            except json.JSONDecodeError:
+                # Keep original if both methods fail
+                pass
+    
+    return message
 
 ai_nlp_bp = Blueprint('ai_nlp', __name__)
 
@@ -73,39 +235,20 @@ def planner_converse():
     
     try:
         # Process with Claude
-        result = claude_service.process_activity_creator_input(input_text, conversation_history)
+        raw_result = claude_service.process_activity_creator_input(input_text, conversation_history)
+        
+        # Process the raw response into a clean, structured format
+        result = process_claude_response(raw_result)
         
         # Enhanced logging for debugging
-        logger.info(f"Claude response type: {type(result)}")
-        logger.info(f"Claude response: {result}")
+        logger.info(f"Claude response type: {type(raw_result)}")
+        logger.info(f"Processed response: {result}")
         
         # Extract message and info
-        final_message = ""
-        extracted_info = {}
+        final_message = result['message']
+        extracted_info = result['extracted_info']
         
-        # Handle different response types
-        if isinstance(result, dict):
-            # Direct dictionary response
-            final_message = result.get('message', '')
-            extracted_info = result.get('extracted_info', {})
-        elif isinstance(result, str):
-            # String response - check if it's JSON
-            if result.strip().startswith('{') and '"message"' in result:
-                try:
-                    parsed = json.loads(result)
-                    final_message = parsed.get('message', result)
-                    extracted_info = parsed.get('extracted_info', {})
-                except json.JSONDecodeError:
-                    # Not valid JSON, use as-is
-                    final_message = result
-            else:
-                # Regular string, use as-is
-                final_message = result
-        else:
-            # Fallback for unexpected types
-            final_message = str(result)
-            
-        # Create a clean response
+        # Create the response structure
         response = {
             'success': True,
             'message': final_message,
@@ -113,8 +256,10 @@ def planner_converse():
         }
         
         # Add plan if activity is trip-like
-        if (len(input_text) > 100 and 
-            any(keyword in input_text.lower() for keyword in ['trip', 'itinerary', 'museum', 'schedule', 'plan', 'visit'])):
+        if result.get('plan'):
+            response['plan'] = result['plan']
+        elif (len(input_text) > 100 and 
+              any(keyword in input_text.lower() for keyword in ['trip', 'itinerary', 'museum', 'schedule', 'plan', 'visit'])):
             try:
                 # Create a plan from mock data
                 planner = ActivityPlanner()

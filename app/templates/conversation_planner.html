@@ -7,7 +7,7 @@
     <input type="hidden" id="activity-id" value="{{ activity.id }}">
     
     <div class="row justify-content-center">
-        <div class="col-lg-8">
+        <div class="col-lg-10">
             <div class="card mb-4">
                 <div class="card-header">
                     <h3 class="mb-0">Plan Your Group Activity</h3>
@@ -16,7 +16,7 @@
                     <p class="lead">Tell me about your activity ideas, and I'll help you create the perfect plan.</p>
                     
                     <div id="conversation-container" class="mb-4">
-                        <div class="chat-history" id="chat-history">
+                        <div class="chat-history p-3" id="chat-history" style="max-height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 5px;">
                             <!-- Chat messages will appear here -->
                         </div>
                     </div>
@@ -24,8 +24,10 @@
                     <form id="conversation-form" class="mt-3">
                         <div class="input-group">
                             <input type="text" id="user-input" class="form-control" 
-                                   placeholder="e.g., '8 people, outdoor activity, budget around $30 per person'">
-                            <button class="btn btn-primary" type="submit">Send</button>
+                                   placeholder="e.g., '8 people, outdoor activity, budget around $30 per person'" autofocus>
+                            <button class="btn btn-primary" type="submit">
+                                <i class="fas fa-paper-plane"></i> Send
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -47,6 +49,8 @@
     </div>
 </div>
 
+{% endblock %}
+
 {% block extra_js %}
 <script>
 // JavaScript to handle the conversation interface
@@ -57,6 +61,187 @@ document.addEventListener('DOMContentLoaded', function() {
     const planContainer = document.getElementById('plan-container');
     const planContent = document.getElementById('plan-content');
     const activityId = document.getElementById('activity-id').value;
+    
+    // Add message to chat
+    function addMessageToChat(sender, text, className = '') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${sender}-message ${className || ''} mb-3`;
+        
+        let messageContent = '';
+        
+        if (sender === 'user') {
+            messageContent = `
+                <div class="d-flex justify-content-end">
+                    <div class="message-bubble p-3 bg-primary text-white rounded-3" style="max-width: 80%;">
+                        ${text}
+                    </div>
+                </div>
+            `;
+        } else if (sender === 'assistant') {
+            messageContent = `
+                <div class="d-flex justify-content-start">
+                    <div class="message-bubble p-3 bg-light rounded-3" style="max-width: 80%;">
+                        ${className === 'thinking' ? 
+                            `<div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                ${text}
+                            </div>` 
+                            : formatClaudeResponse(text)}
+                    </div>
+                </div>
+            `;
+        } else if (sender === 'system') {
+            messageContent = `
+                <div class="d-flex justify-content-center">
+                    <div class="message-bubble py-2 px-3 bg-light text-muted rounded-3" style="font-size: 0.85rem;">
+                        ${text}
+                    </div>
+                </div>
+            `;
+        }
+        
+        messageDiv.innerHTML = messageContent;
+        chatHistory.appendChild(messageDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    
+    // Format Claude's response text - handle markdown, links, etc.
+    function formatClaudeResponse(text) {
+        // First, handle any JSON structure that might exist
+        if (typeof text === 'string' && text.trim().startsWith('{') && text.includes('"message"')) {
+            try {
+                const parsedResponse = JSON.parse(text);
+                return formatClaudeResponse(parsedResponse.message || text);
+            } catch (e) {
+                console.warn('Failed to parse JSON in message', e);
+                // Continue with original text if parsing fails
+            }
+        }
+        
+        // Handle newlines and paragraphs
+        let formattedText = text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph tags if not already
+        if (!formattedText.startsWith('<p>')) {
+            formattedText = '<p>' + formattedText;
+        }
+        if (!formattedText.endsWith('</p>')) {
+            formattedText = formattedText + '</p>';
+        }
+        
+        return formattedText;
+    }
+    
+    // Display a plan
+    function displayPlan(plan) {
+        if (!plan) return;
+        
+        // Format the plan
+        let planHTML = `
+            <h4 class="mb-3">${plan.title || 'Your Activity Plan'}</h4>
+            <div class="plan-description mb-4">
+                ${plan.description ? plan.description.replace(/\n/g, '<br>') : ''}
+            </div>
+        `;
+        
+        // Add schedule if available
+        if (plan.schedule && Array.isArray(plan.schedule) && plan.schedule.length > 0) {
+            planHTML += `
+                <h5 class="mt-4 mb-3">Schedule</h5>
+                <div class="schedule-timeline mb-4">
+                    <div class="list-group">
+                        ${plan.schedule.map(item => `
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 text-primary">${item.time}</h6>
+                                </div>
+                                <p class="mb-1">${item.activity}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add considerations if available
+        if (plan.considerations) {
+            planHTML += `
+                <h5 class="mt-4 mb-3">Special Considerations</h5>
+                <div class="alert alert-info">
+                    ${plan.considerations}
+                </div>
+            `;
+        }
+        
+        // Add alternatives if available
+        if (plan.alternatives && Array.isArray(plan.alternatives) && plan.alternatives.length > 0) {
+            planHTML += `
+                <h5 class="mt-4 mb-3">Alternative Options</h5>
+                <ol class="list-group list-group-numbered">
+                    ${plan.alternatives.map(alt => `
+                        <li class="list-group-item">${alt}</li>
+                    `).join('')}
+                </ol>
+            `;
+        }
+        
+        // Update the plan content and show the container
+        planContent.innerHTML = planHTML;
+        planContainer.style.display = 'block';
+    }
+    
+    // Parse Claude's response to extract the actual message and plan data
+    function parseClaudeResponse(response) {
+        console.log('Parsing Claude response:', response);
+        
+        // Default values
+        let result = {
+            message: '',
+            plan: null
+        };
+        
+        // Handle string responses
+        if (typeof response === 'string') {
+            // Check if the response is JSON
+            if (response.trim().startsWith('{') && response.includes('"message"')) {
+                try {
+                    const parsed = JSON.parse(response);
+                    result.message = parsed.message || response;
+                    result.plan = parsed.plan || null;
+                } catch (e) {
+                    console.warn('Failed to parse JSON response:', e);
+                    result.message = response;
+                }
+            } else {
+                result.message = response;
+            }
+        } 
+        // Handle object responses
+        else if (typeof response === 'object' && response !== null) {
+            // Extract message
+            if (response.message) {
+                // Check if response.message is itself a JSON string
+                if (typeof response.message === 'string' && 
+                    response.message.trim().startsWith('{') && 
+                    response.message.includes('"message"')) {
+                    try {
+                        const nestedJson = JSON.parse(response.message);
+                        result.message = nestedJson.message || response.message;
+                    } catch (e) {
+                        console.warn('Failed to parse nested JSON in message:', e);
+                        result.message = response.message;
+                    }
+                } else {
+                    result.message = response.message;
+                }
+            }
+            
+            // Extract plan
+            result.plan = response.plan || null;
+        }
+        
+        return result;
+    }
     
     // Handle form submission
     conversationForm.addEventListener('submit', function(e) {
@@ -70,10 +255,10 @@ document.addEventListener('DOMContentLoaded', function() {
         userInput.value = '';
         
         // Show thinking indicator
-        addMessageToChat('system', 'Thinking...', 'thinking');
+        addMessageToChat('assistant', 'Thinking...', 'thinking');
         
         // Send to server
-        fetch(`/api/activities/${activityId}/converse`, {
+        fetch(`/api/ai/planner/converse`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -86,67 +271,37 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             // Remove thinking indicator
-            document.querySelector('.thinking').remove();
+            const thinkingMsg = chatHistory.querySelector('.thinking');
+            if (thinkingMsg) thinkingMsg.remove();
             
             console.log('API response data:', data);
             
-            if (data.success) {
-                // Display the plan
-                displayPlan(data.plan);
-                
-                // Add assistant response using the message from Claude if available
-                const assistantMessage = data.message || 'I\'ve created a plan based on your input. How does this look?';
-                addMessageToChat('assistant', assistantMessage);
-                
-                // Show the plan container
-                planContainer.style.display = 'block';
-                
-                // Add first message if this is first interaction
-                if (chatHistory.querySelectorAll('.chat-message').length <= 2) {
-                    addMessageToChat('assistant', 'Feel free to refine the plan by providing more details or making specific requests about what you\'d like to change.');
-                }
-            } else {
-                const errorMessage = data.error || 'Sorry, I had trouble creating a plan. Could you provide more details?';
-                addMessageToChat('assistant', errorMessage);
+            // Parse the response
+            const parsedResponse = parseClaudeResponse(data);
+            
+            // Add assistant response
+            addMessageToChat('assistant', parsedResponse.message || 'I created a plan based on your input.');
+            
+            // Display the plan if available
+            if (parsedResponse.plan || data.plan) {
+                displayPlan(parsedResponse.plan || data.plan);
             }
+            
+            // Focus the input field for the next message
+            userInput.focus();
         })
         .catch(error => {
-            document.querySelector('.thinking').remove();
-            addMessageToChat('assistant', 'Sorry, something went wrong. Please try again.');
+            // Remove thinking indicator
+            const thinkingMsg = chatHistory.querySelector('.thinking');
+            if (thinkingMsg) thinkingMsg.remove();
+            
             console.error('Error:', error);
+            addMessageToChat('assistant', 'Sorry, something went wrong. Please try again.');
+            
+            // Focus the input field
+            userInput.focus();
         });
     });
-    
-    // Function to add message to chat
-    function addMessageToChat(sender, text, className) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `chat-message ${sender}-message ${className || ''}`;
-        messageDiv.innerHTML = `<p>${text}</p>`;
-        chatHistory.appendChild(messageDiv);
-        chatHistory.scrollTop = chatHistory.scrollHeight;
-    }
-    
-    // Add welcome message on load
-    addMessageToChat('assistant', 'Hello! I\'m your AI Activity Planner. Tell me about the group activity you\'d like to plan. Include details like the number of people, any special requirements, location preferences, and budget constraints. The more details you provide, the better I can tailor the plan to your needs.');
-    
-    // Function to display the plan
-    function displayPlan(plan) {
-        planContent.innerHTML = `
-            <h4>${plan.title}</h4>
-            <div class="plan-description">${plan.description.replace(/\n/g, '<br>')}</div>
-            
-            ${plan.schedule ? `
-            <h5 class="mt-4">Schedule</h5>
-            <ul class="list-group">
-                ${plan.schedule.map(item => `
-                    <li class="list-group-item">
-                        <strong>${item.time}:</strong> ${item.activity}
-                    </li>
-                `).join('')}
-            </ul>
-            ` : ''}
-        `;
-    }
     
     // Handle plan buttons
     document.getElementById('accept-plan-btn').addEventListener('click', function() {
@@ -158,7 +313,12 @@ document.addEventListener('DOMContentLoaded', function() {
         userInput.focus();
         addMessageToChat('assistant', 'What would you like to change about the plan?');
     });
+    
+    // Add welcome message on load
+    addMessageToChat('assistant', 'Hello! I\'m your AI Activity Planner. Tell me about the group activity you\'d like to plan. Include details like the number of people, any special requirements, location preferences, and budget constraints. The more details you provide, the better I can tailor the plan to your needs.');
+    
+    // Focus the input field on page load
+    userInput.focus();
 });
 </script>
-{% endblock %}
 {% endblock %}

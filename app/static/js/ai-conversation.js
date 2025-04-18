@@ -168,100 +168,75 @@ function createConversationInterface(container, callbacks) {
       }
       
       // Display the AI's response
-      console.log("Processing response:", response);
-      const messageText = typeof response === 'string' ? response : response.message;
+      let displayMessage = "";
       
-      // For direct debugging
-      console.log("MESSAGE TEXT TYPE:", typeof messageText);
-      console.log("MESSAGE TEXT:", messageText);
+      if (typeof response === 'string') {
+        displayMessage = response;
+      } else if (response && typeof response === 'object') {
+        if (response.message) {
+          // Normal object response
+          displayMessage = response.message;
+        } else if (response.error) {
+          displayMessage = `Error: ${response.error}`;
+        }
+      }
       
-      // Clean the message for display
-      let displayMessage = messageText;
-      
-      // Simple regex pattern to detect JSON
-      if (typeof displayMessage === 'string' && 
-          displayMessage.match(/^\s*\{\s*"message"\s*:/)) {
-        
-        console.log("JSON detected in message - cleaning");
-        
+      // Try to handle JSON string if that's what we got
+      if (typeof displayMessage === 'string' && displayMessage.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(displayMessage);
           if (parsed && parsed.message) {
             displayMessage = parsed.message;
-            
-            // Also update the response object
-            if (typeof response === 'object') {
-              response.message = displayMessage;
-              
-              // Transfer extracted_info if available
-              if (parsed.extracted_info) {
-                response.extracted_info = parsed.extracted_info;
-              }
+            // Update extracted info if available
+            if (parsed.extracted_info && !response.extracted_info) {
+              response.extracted_info = parsed.extracted_info;
             }
           }
         } catch (e) {
-          console.error("JSON cleaning failed:", e);
-          // If we can't parse, use a manual string extraction approach
-          const startMarker = '"message": "';
-          const endMarker = '", "extracted_info"';
-          
-          if (displayMessage.includes(startMarker) && displayMessage.includes(endMarker)) {
-            const startIndex = displayMessage.indexOf(startMarker) + startMarker.length;
-            const endIndex = displayMessage.indexOf(endMarker);
-            if (startIndex > 0 && endIndex > startIndex) {
-              displayMessage = displayMessage.substring(startIndex, endIndex);
-              // Unescape any JSON escaping
-              displayMessage = displayMessage.replace(/\\"/g, '"').replace(/\\n/g, '\n');
-            }
-          }
+          console.error("Error parsing JSON string:", e);
+          // Leave displayMessage as is
         }
       }
       
-      console.log("Final cleaned message:", displayMessage);
+      // Add message to chat
       addMessage(messagesContainer, 'assistant', displayMessage);
       
-      // Add to conversation history - include extracted_info and plan if available
-      const historyEntry = {
+      // Add to conversation history
+      conversationHistory.push({
         role: 'assistant', 
-        content: response.message
-      };
-      
-      // Add extracted info to history entry if available
-      if (response.extracted_info) {
-        historyEntry.extracted_info = response.extracted_info;
-      }
-      
-      // Add plan to history entry if available
-      if (response.plan) {
-        historyEntry.plan = response.plan;
-      }
-      
-      conversationHistory.push(historyEntry);
+        content: displayMessage
+      });
       
       // Update preferences based on response
-      if (response.extracted_info) {
-        console.log("Extracted info:", response.extracted_info);
+      if (response.extracted_info || (response.plan && Object.keys(response.plan).length > 0)) {
+        console.log("Extracted info or plan found:", response.extracted_info || response.plan);
         
         // Save activity type if available
-        if (response.extracted_info.activity_type) {
-          activityType = response.extracted_info.activity_type;
+        const extractedInfo = response.extracted_info || {};
+        
+        if (extractedInfo.activity_type) {
+          activityType = extractedInfo.activity_type;
           if (callbacks && callbacks.onUpdateActivityType) {
             callbacks.onUpdateActivityType(activityType);
           }
         }
         
         // Save special considerations if available
-        if (response.extracted_info.special_requirements) {
-          specialConsiderations = response.extracted_info.special_requirements;
+        if (extractedInfo.special_requirements) {
+          specialConsiderations = extractedInfo.special_requirements;
           if (callbacks && callbacks.onUpdateConsiderations) {
             callbacks.onUpdateConsiderations(specialConsiderations);
           }
         }
+        
+        // Update the activity description using extracted info
+        updatePlanDescription(extractedInfo, response.plan);
       }
       
-      // If we have a plan, log it
+      // If we have a plan, log it and create a visual representation
       if (response.plan) {
         console.log("Plan:", response.plan);
+        createPlanVisualization(response.plan);
       }
       
       // Update conversation summary
@@ -278,11 +253,157 @@ function createConversationInterface(container, callbacks) {
       // Show the specific error message if available
       const errorMessage = error.message || 'Sorry, I encountered an error. Please try again.';
       addMessage(messagesContainer, 'assistant', errorMessage);
-      
-      // Don't add error messages to conversation history
     }
   }
-  
+
+  // Helper function to create a visual representation of the plan
+  function createPlanVisualization(plan) {
+    // Check if we need to create a plan section
+    const existingPlanSection = document.getElementById('plan-visualization');
+    if (existingPlanSection) {
+      existingPlanSection.remove();
+    }
+    
+    // Create plan section
+    const planSection = document.createElement('div');
+    planSection.id = 'plan-visualization';
+    planSection.className = 'card mt-4 mb-4';
+    
+    // Create plan header
+    const planHeader = document.createElement('div');
+    planHeader.className = 'card-header';
+    planHeader.innerHTML = `<h5 class="mb-0">${plan.title || 'Activity Plan'}</h5>`;
+    
+    // Create plan body
+    const planBody = document.createElement('div');
+    planBody.className = 'card-body';
+    
+    // Add description
+    if (plan.description) {
+      const descDiv = document.createElement('div');
+      descDiv.className = 'mb-3';
+      descDiv.innerHTML = plan.description.replace(/\n/g, '<br>');
+      planBody.appendChild(descDiv);
+    }
+    
+    // Add schedule if available
+    if (plan.schedule && Array.isArray(plan.schedule)) {
+      const scheduleDiv = document.createElement('div');
+      scheduleDiv.className = 'mt-3';
+      scheduleDiv.innerHTML = '<h6>Schedule:</h6>';
+      
+      const scheduleList = document.createElement('ul');
+      scheduleList.className = 'list-group';
+      
+      plan.schedule.forEach(item => {
+        const scheduleItem = document.createElement('li');
+        scheduleItem.className = 'list-group-item';
+        scheduleItem.innerHTML = `<strong>${item.time}:</strong> ${item.activity}`;
+        scheduleList.appendChild(scheduleItem);
+      });
+      
+      scheduleDiv.appendChild(scheduleList);
+      planBody.appendChild(scheduleDiv);
+    }
+    
+    // Add considerations if available
+    if (plan.considerations) {
+      const considerationsDiv = document.createElement('div');
+      considerationsDiv.className = 'mt-3';
+      considerationsDiv.innerHTML = `<h6>Special Considerations:</h6><p>${plan.considerations}</p>`;
+      planBody.appendChild(considerationsDiv);
+    }
+    
+    // Add alternatives if available
+    if (plan.alternatives && Array.isArray(plan.alternatives)) {
+      const alternativesDiv = document.createElement('div');
+      alternativesDiv.className = 'mt-3';
+      alternativesDiv.innerHTML = '<h6>Alternative Options:</h6>';
+      
+      const alternativesList = document.createElement('ul');
+      
+      plan.alternatives.forEach(alt => {
+        const altItem = document.createElement('li');
+        altItem.textContent = alt;
+        alternativesList.appendChild(altItem);
+      });
+      
+      alternativesDiv.appendChild(alternativesList);
+      planBody.appendChild(alternativesDiv);
+    }
+    
+    // Assemble plan section
+    planSection.appendChild(planHeader);
+    planSection.appendChild(planBody);
+    
+    // Add to container
+    messagesContainer.appendChild(planSection);
+    
+    // Scroll to the plan
+    planSection.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // Helper function to update the activity description based on extracted info
+  function updatePlanDescription(extractedInfo, plan) {
+    const descriptionField = document.getElementById('activity_description');
+    if (!descriptionField) return;
+    
+    // Start building an informative description
+    let description = "";
+    
+    // Use the plan description if available
+    if (plan && plan.description) {
+      description = plan.description + "\n\n";
+    } else {
+      // Build from extracted info
+      if (extractedInfo.activity_type) {
+        description += `# ${extractedInfo.activity_type}\n\n`;
+      } else {
+        description += "# Group Activity Plan\n\n";
+      }
+      
+      if (extractedInfo.group_size || extractedInfo.group_composition) {
+        description += `**Group:** ${extractedInfo.group_composition || extractedInfo.group_size || ''}\n\n`;
+      }
+      
+      if (extractedInfo.location) {
+        description += `**Location:** ${extractedInfo.location}\n\n`;
+      }
+      
+      if (extractedInfo.timing || extractedInfo.duration) {
+        description += `**Timing:** ${extractedInfo.timing || ''} ${extractedInfo.duration ? `(${extractedInfo.duration})` : ''}\n\n`;
+      }
+      
+      if (extractedInfo.transportation) {
+        description += `**Transportation:** ${extractedInfo.transportation}\n\n`;
+      }
+      
+      if (extractedInfo.budget) {
+        description += `**Budget:** ${extractedInfo.budget}\n\n`;
+      }
+      
+      if (extractedInfo.meals) {
+        description += `**Meals:** ${extractedInfo.meals}\n\n`;
+      }
+      
+      if (extractedInfo.special_requirements) {
+        description += `**Special Considerations:** ${extractedInfo.special_requirements}\n\n`;
+      }
+    }
+    
+    // If we have plan schedule, add it
+    if (plan && plan.schedule && Array.isArray(plan.schedule)) {
+      description += "## Schedule\n\n";
+      
+      plan.schedule.forEach(item => {
+        description += `**${item.time}:** ${item.activity}\n\n`;
+      });
+    }
+    
+    // Update the field
+    descriptionField.value = description;
+  }
+
   // Function to call the backend API
   async function callBackendApi(activityId, message) {
     // We'll try to use the conversation API endpoint if it exists
@@ -290,7 +411,6 @@ function createConversationInterface(container, callbacks) {
     
     console.log("Calling backend API with URL:", url);
     console.log("Message:", message);
-    console.log("Conversation history:", conversationHistory);
     
     const response = await fetch(url, {
       method: 'POST',
@@ -312,62 +432,51 @@ function createConversationInterface(container, callbacks) {
       throw new Error(`API request failed with status ${response.status}`);
     }
     
-    // Get the raw text response first to check for JSON format issues
-    const rawText = await response.text();
-    console.log("Raw API response:", rawText);
-    
+    // Get the response JSON
     let data;
     try {
-      // Try to parse the raw text as JSON
-      data = JSON.parse(rawText);
+      data = await response.json();
+      console.log("API response data:", data);
     } catch (e) {
       console.error("Failed to parse API response as JSON:", e);
-      // Fall back to using the raw text as the message
+      const text = await response.text();
       return {
-        message: rawText,
+        message: text,
         extracted_info: {}
       };
     }
     
-    // Handle cases where the message itself is a JSON string
-    if (data.message && typeof data.message === 'string') {
-      // Check if the message appears to be a JSON string
-      if (data.message.trim().startsWith('{') && data.message.includes('"message"') && data.message.includes('"extracted_info"')) {
+    // Check if we have a message field
+    if (data && data.message) {
+      // Check if the message itself is a JSON string
+      if (typeof data.message === 'string' && data.message.trim().startsWith('{')) {
         try {
-          const parsedMessage = JSON.parse(data.message);
-          console.log("Parsed nested JSON from message:", parsedMessage);
-          
-          // Replace the original data with the parsed content
-          if (parsedMessage.message) {
-            data.message = parsedMessage.message;
-          }
-          if (parsedMessage.extracted_info) {
-            data.extracted_info = parsedMessage.extracted_info;
+          const parsedMsg = JSON.parse(data.message);
+          if (parsedMsg && parsedMsg.message) {
+            // Replace the message with the parsed inner message
+            data.message = parsedMsg.message;
+            
+            // Update extracted_info if available in the nested JSON
+            if (parsedMsg.extracted_info) {
+              data.extracted_info = parsedMsg.extracted_info;
+            }
           }
         } catch (e) {
           console.error("Failed to parse nested JSON in message:", e);
-          // Keep the original message if parsing fails
+          // Keep the original message
         }
       }
-    }
-    
-    // If the API returned a proper response, use it
-    if (data.message) {
-      const result = {
+      
+      // Return the clean data
+      return {
         message: data.message,
-        extracted_info: data.extracted_info || {}
+        extracted_info: data.extracted_info || {},
+        plan: data.plan || null
       };
-      
-      // If there's a plan, include it in the response
-      if (data.plan) {
-        result.plan = data.plan;
-      }
-      
-      return result;
     } else if (data.error) {
       throw new Error(data.error);
     } else {
-      throw new Error('Invalid API response');
+      throw new Error('Invalid API response format');
     }
   }
   
