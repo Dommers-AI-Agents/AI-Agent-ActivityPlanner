@@ -2,10 +2,11 @@
 Main routes for the Group Activity Planner web interface.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, abort, current_app
-from app.models.database import Activity, Participant, Plan
+from app.models.database import Activity, Participant, Plan, Preference
 from app.models.planner import ActivityPlanner
 from app.services.sms_service import sms_service
 from app.services.email_service import email_service
+from app.services.claude_service import claude_service
 from app import db
 from flask_login import login_required, current_user
 
@@ -111,11 +112,14 @@ def create_activity():
                     except Exception as e:
                         current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
         
-        # Redirect to the activity page
-        #return redirect(url_for('main.activity_detail', activity_id=activity.id))
-
-        # Instead of redirecting to activity detail, redirect to conversation planner
-        return redirect(url_for('main.conversation_planner', activity_id=activity.id))
+        # Generate the plan from AI conversation before redirecting
+        # This ensures we have the plan created from user-AI conversation
+        if activity_description:
+            # Create an initial plan based on the conversation
+            planner.create_plan_from_description(activity_description, activity_type)
+            
+        # Redirect to participants page - changed flow as requested
+        return redirect(url_for('main.activity_detail', activity_id=activity.id))
     
     # Show the create activity form
     return render_template('create_activity.html')
@@ -357,43 +361,59 @@ def activity_questions(activity_id):
         flash("Invalid participant access.", "error")
         return redirect(url_for('main.index'))
     
-    # Force reload participant data to ensure we're using the latest data and questions
+    # Force reload participant data to ensure we're using the latest data
     db.session.refresh(participant)
     
-    # Initialize planner and get next questions
-    planner = ActivityPlanner(activity_id)
-    
-    # For debugging - check if we're getting the new questions format
-    current_app.logger.info(f"Getting questions batch for participant {participant_id} with status {participant.status}")
+    # Check if the completed flag was set (returning from final submission)
+    completed = request.args.get('completed', 'false') == 'true'
+    if completed:
+        # Mark the participant as complete if they're not already
+        if participant.status != 'complete':
+            participant.status = 'complete'
+            db.session.commit()
+            current_app.logger.info(f"Updated participant {participant_id} status to 'complete' from query parameter")
+        
+        # Always pass all_complete as True if completed flag is present
+        all_complete = True
+    else:
+        # Initialize planner and determine current status
+        planner = ActivityPlanner(activity_id)
+        
+        # Retrieve participant preferences for display
+        preferences = planner.get_participant_preferences(participant_id)
+        
+        # Check if participant is already marked as complete
+        all_complete = participant.status == 'complete'
+        
+        # Only generate questions if not complete
+        questions = None
+        if not all_complete:
+            questions = planner.generate_questions_batch(participant_id)
+            # If no more questions, this also means they're complete
+            all_complete = questions is None
+            if all_complete and participant.status != 'complete':
+                participant.status = 'complete'
+                db.session.commit()
+                current_app.logger.info(f"Updated participant {participant_id} status to 'complete' from question check")
     
     # Check if we should use conversational interface
     use_conversation = request.args.get('conversation', 'false') == 'true'
+    
+    # Fetch participant preferences for the template
+    planner = ActivityPlanner(activity_id)
+    preferences = planner.get_participant_preferences(participant_id)
+    
+    # Log the participant status
+    current_app.logger.info(f"Rendering questions for participant {participant_id} with status {participant.status}, all_complete={all_complete}")
 
     return render_template(
         'questions.html',
         activity=activity,
         participant=participant,
-        questions=questions,
+        questions=questions if 'questions' in locals() else None,
         all_complete=all_complete,
-        use_conversation=use_conversation
-    )
-    
-    # Get the questions
-    questions = planner.generate_questions_batch(participant_id)
-    
-    # Log the first question's information for debugging
-    if questions and len(questions) > 0:
-        current_app.logger.info(f"First question: {questions[0]['question']}")
-        
-    # Check if we've answered all questions
-    all_complete = questions is None
-    
-    return render_template(
-        'questions.html',
-        activity=activity,
-        participant=participant,
-        questions=questions,
-        all_complete=all_complete
+        use_conversation=use_conversation,
+        preferences=preferences
     )
 
 @main_bp.route('/activity/<activity_id>/submit-answers', methods=['POST'])
@@ -417,49 +437,87 @@ def submit_answers(activity_id):
     current_app.logger.info(f"Processing answers for participant {participant_id} (status: {participant.status})")
     
     # Process the submitted answers
-    answers = request.json.get('answers', {})
-    current_app.logger.info(f"Received answers: {answers}")
+    data = request.json
+    current_app.logger.info(f"Received data: {data}")
     
+    # Get answers - could be a flat dict or an object with category structure
+    answers = data.get('answers', {})
     if not answers:
         current_app.logger.warning(f"No answers submitted for participant {participant_id}")
         return jsonify({"error": "No answers provided"}), 400
     
+    # Check if this is a final submission
+    is_final = data.get('is_final', False)
+    current_app.logger.info(f"Is final submission: {is_final}")
+    
     # Save answers as preferences
     planner = ActivityPlanner(activity_id)
-    for question_id, answer in answers.items():
-        # Determine category based on question ID or batch
-        if question_id in ['email', 'name', 'allow_group_text']:
-            category = 'contact'
-        elif question_id in ['group_size', 'has_children', 'has_seniors', 'social_level']:
-            category = 'group'
-        elif question_id in ['preferred_day', 'preferred_time', 'duration']:
-            category = 'timing'
-        elif question_id in ['activity_type', 'physical_exertion', 'budget_range', 'learning_preference']:
-            category = 'activity'
-        elif question_id in ['meals_included']:
-            category = 'meals'
-        elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info', 'direct_input']:
-            category = 'requirements'
-        else:
-            category = 'other'
-            current_app.logger.info(f"Question {question_id} mapped to 'other' category")
-        
-        # Log the preference being saved
-        current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
-        
-        # Save the preference
-        planner.save_preference(participant_id, category, question_id, answer)
-        
-        # Update participant record for special fields
-        if question_id == 'email':
-            participant.email = answer
-        elif question_id == 'name':
-            participant.name = answer
-        elif question_id == 'allow_group_text':
-            participant.allow_group_text = answer
+    
+    # Check if we have a new structure with categories already defined
+    if isinstance(answers, dict) and any(key in ['contact', 'activity', 'timing', 'group', 'meals', 'requirements'] for key in answers.keys()):
+        # New structure - iterate through categories
+        for category, prefs in answers.items():
+            if not isinstance(prefs, dict):
+                continue
+                
+            for question_id, answer in prefs.items():
+                if not answer:  # Skip empty answers
+                    continue
+                    
+                # Log the preference being saved
+                current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
+                
+                # Save the preference
+                planner.save_preference(participant_id, category, question_id, answer)
+                
+                # Update participant record for special fields
+                if category == 'contact':
+                    if question_id == 'email':
+                        participant.email = answer
+                    elif question_id == 'name':
+                        participant.name = answer
+                    elif question_id == 'allow_group_text':
+                        participant.allow_group_text = answer
+    else:
+        # Old structure - determine category from question ID
+        for question_id, answer in answers.items():
+            # Determine category based on question ID or batch
+            if question_id in ['email', 'name', 'allow_group_text']:
+                category = 'contact'
+            elif question_id in ['group_size', 'has_children', 'has_seniors', 'social_level']:
+                category = 'group'
+            elif question_id in ['preferred_day', 'preferred_time', 'duration']:
+                category = 'timing'
+            elif question_id in ['activity_type', 'physical_exertion', 'budget_range', 'learning_preference']:
+                category = 'activity'
+            elif question_id in ['meals_included']:
+                category = 'meals'
+            elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info', 'direct_input']:
+                category = 'requirements'
+            else:
+                category = 'other'
+                current_app.logger.info(f"Question {question_id} mapped to 'other' category")
+            
+            # Log the preference being saved
+            current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
+            
+            # Save the preference
+            planner.save_preference(participant_id, category, question_id, answer)
+            
+            # Update participant record for special fields
+            if question_id == 'email':
+                participant.email = answer
+            elif question_id == 'name':
+                participant.name = answer
+            elif question_id == 'allow_group_text':
+                participant.allow_group_text = answer
     
     # Update participant status
-    if answers:
+    if is_final:
+        participant.status = 'complete'
+        db.session.commit()
+        current_app.logger.info(f"Updated participant {participant_id} status to 'complete' from final submission")
+    else:
         participant.status = 'active'
         db.session.commit()
         current_app.logger.info(f"Updated participant {participant_id} status to 'active'")
@@ -467,27 +525,27 @@ def submit_answers(activity_id):
     # Force database refresh before getting next questions
     db.session.refresh(participant)
     
-    # Get next batch of questions
-    current_app.logger.info(f"Getting next question batch for participant {participant_id}")
-    next_questions = planner.generate_questions_batch(participant_id)
-    
-    # Log the next questions or completion
-    if next_questions is None:
-        current_app.logger.info(f"No more questions for participant {participant_id}")
-        participant.status = 'complete'
-        db.session.commit()
-        current_app.logger.info(f"Updated participant {participant_id} status to 'complete'")
-    else:
-        current_app.logger.info(f"Next batch has {len(next_questions)} questions")
-        current_app.logger.info(f"First question: {next_questions[0]['question'] if next_questions else 'None'}")
+    # Get next batch of questions only if not final submission
+    next_questions = None
+    if not is_final:
+        current_app.logger.info(f"Getting next question batch for participant {participant_id}")
+        next_questions = planner.generate_questions_batch(participant_id)
+        
+        # Log the next questions or completion
+        if next_questions is None:
+            current_app.logger.info(f"No more questions for participant {participant_id}")
+            participant.status = 'complete'
+            db.session.commit()
+            current_app.logger.info(f"Updated participant {participant_id} status to 'complete' from no more questions")
+        else:
+            current_app.logger.info(f"Next batch has {len(next_questions)} questions")
     
     # Prepare response
     response_data = {
         "success": True,
         "next_questions": next_questions,
-        "complete": next_questions is None
+        "complete": is_final or next_questions is None
     }
-    current_app.logger.info(f"Returning response: {response_data}")
     
     return jsonify(response_data)
 
@@ -702,6 +760,77 @@ def finalize_plan(activity_id):
     
     flash("The plan has been finalized and all participants have been notified.", "success")
     return redirect(url_for('main.view_plan', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/add-participants', methods=['POST'])
+@login_required
+def add_participants(activity_id):
+    """Add additional participants to an existing activity."""
+    # Verify activity belongs to current user
+    activity = Activity.query.get_or_404(activity_id)
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get participant data from form
+    participant_phones = request.form.getlist('participant_phone[]')
+    participant_emails = request.form.getlist('participant_email[]')
+    participant_names = request.form.getlist('participant_name[]')
+    
+    # Initialize planner
+    planner = ActivityPlanner(activity_id)
+    
+    # Count successful invitations
+    success_count = 0
+    
+    # Add each participant and send invitation
+    for i in range(len(participant_phones)):
+        if participant_phones[i]:
+            phone = participant_phones[i]
+            email = participant_emails[i] if i < len(participant_emails) else None
+            name = participant_names[i] if i < len(participant_names) else None
+            
+            try:
+                # Add participant to the activity
+                participant = planner.add_participant(
+                    phone_number=phone,
+                    email=email,
+                    name=name
+                )
+                
+                # Save basic contact info
+                if name:
+                    planner.save_preference(participant.id, 'contact', 'name', name)
+                if email:
+                    planner.save_preference(participant.id, 'contact', 'email', email)
+                
+                # Send SMS invitation
+                try:
+                    sms_service.send_welcome_message(phone, activity.id, participant.id)
+                except Exception as e:
+                    current_app.logger.error(f"Failed to send SMS to {phone}: {str(e)}")
+                
+                # Send email invitation if available
+                if email:
+                    try:
+                        email_service.send_welcome_email(
+                            email,
+                            name or "Participant",
+                            activity.id,
+                            participant.id
+                        )
+                    except Exception as e:
+                        current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
+                
+                success_count += 1
+            except Exception as e:
+                current_app.logger.error(f"Failed to add participant {name or phone}: {str(e)}")
+    
+    if success_count > 0:
+        flash(f"Successfully invited {success_count} new participant(s)!", "success")
+    else:
+        flash("No participants were added. Please check your inputs and try again.", "warning")
+    
+    return redirect(url_for('main.activity_detail', activity_id=activity_id))
 
 @main_bp.route('/activity/<activity_id>/delete', methods=['POST'])
 @login_required

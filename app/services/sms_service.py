@@ -81,7 +81,7 @@ class SMSService:
             dict: Response data from Twilio.
         """
         # Build the web URL
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         
         if participant_id:
             url = f"{app_url}/activity/{activity_id}?participant={participant_id}"
@@ -90,17 +90,17 @@ class SMSService:
         
         # Short message body
         body = (
-            "Help plan your group activity by sharing your preferences."
-            f"{url}\n\n"
+            "Help Wesley plan your group activity. \n\n"
+            "Click here: " f"{url}"
         )
 
         # Original message body    
         #body = (
-        #    "Welcome to the Group Activity Planner! 🎉\n\n"
-        #    "Help us plan the perfect activity by sharing your preferences. "
-        #    "Click the link below to continue:\n\n"
-        #    f"{url}\n\n"
-        #    "This link is unique to you. No need to create an account!"
+         #   "Welcome to the Wesley's Group Activity Planner! 🎉\n\n"
+          #  "Help plan the perfect activity by sharing your preferences. "
+           # "Click the link below to continue:\n\n"
+           # f"{url}\n\n"
+           # "This link is unique to you. No need to create an account!"
         #)
         
         return self.send_message(to_number, body)
@@ -119,7 +119,7 @@ class SMSService:
         body = message
         
         if activity_id:
-            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+            app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
             url = f"{app_url}/activity/{activity_id}"
             body += f"\n\nView details: {url}"
         
@@ -136,7 +136,7 @@ class SMSService:
         Returns:
             dict: Response data from Twilio.
         """
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         url = f"{app_url}/activity/{activity_id}/plan"
         
         if plan:
@@ -167,7 +167,7 @@ class SMSService:
         # and route it to the appropriate handler
         
         # For this example, we'll just acknowledge and direct to the web interface
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         
         return (
             "Thanks for your message! For the best experience, please use our web interface. "

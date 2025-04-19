@@ -232,7 +232,7 @@ if [ -z "$SKIP_VENV" ]; then
 else
     echo -e "Run the application: ${YELLOW}python -m flask run${NC}"
 fi
-echo -e "Access the application at: ${YELLOW}http://localhost:5000${NC}"
+echo -e "Access the application at: ${YELLOW}https://localhost:5000${NC}"
 
 if [ -z "$SKIP_VENV" ]; then
     echo -e "\n${BOLD}To exit the virtual environment:${NC}"

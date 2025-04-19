@@ -111,7 +111,7 @@ def get_app_url():
     Returns:
         str: The application base URL.
     """
-    return current_app.config.get('APP_URL', 'http://localhost:5000')
+    return current_app.config.get('APP_URL', 'https://localhost:5000')
 
 def truncate_text(text, max_length=100):
     """Truncate text to a maximum length.

@@ -2,6 +2,7 @@
 AI Planner logic for activity planning and recommendations.
 """
 import json
+import re
 from datetime import datetime, timedelta
 
 from app.models.database import Activity, Participant, Preference, Plan
@@ -1270,6 +1271,104 @@ class ActivityPlanner:
         
         return plan
 
+    def create_plan_from_description(self, description, activity_type=None):
+        """Create a plan from the AI conversation description.
+        
+        Args:
+            description (str): The description text from AI conversation
+            activity_type (str, optional): The activity type if available
+            
+        Returns:
+            Plan: The created plan
+        """
+        import json
+        from datetime import datetime, timedelta
+        import re
+        
+        if not self.activity:
+            self.load_activity()
+            
+        # Parse the description for key information
+        parsed_info = self._parse_conversation_input(description)
+        
+        # Use provided activity type or extract from description
+        if activity_type:
+            parsed_info['activity_type'] = activity_type
+            
+        # Set defaults if needed
+        activity_name = parsed_info.get('activity_type', 'Group Activity')
+        group_size = parsed_info.get('group_size', 8)
+        budget = parsed_info.get('budget', '$25 per person')
+        
+        # Generate plan title
+        title = f"{activity_name} Plan"
+        
+        # Create a simple schedule from parsed info
+        day_part = parsed_info.get('time', 'afternoon')
+        is_weekend = parsed_info.get('day', 'weekend') == 'weekend'
+        
+        # Default duration of 3 hours
+        duration = 3
+        
+        # Create start time based on time of day
+        start_time = datetime.now().replace(hour=12, minute=0, second=0)  # Default to noon
+        if day_part == 'morning':
+            start_time = start_time.replace(hour=10)
+        elif day_part == 'afternoon':
+            start_time = start_time.replace(hour=14)
+        elif day_part == 'evening':
+            start_time = start_time.replace(hour=18)
+            
+        # Generate a simple schedule
+        schedule = []
+        current_time = start_time
+        
+        # Add meeting time
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Meet at the venue"
+        })
+        
+        # Add start of activity
+        current_time = current_time + timedelta(minutes=15)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": f"Begin {activity_name}"
+        })
+        
+        # Add break if duration is long enough
+        if duration > 2:
+            current_time = current_time + timedelta(hours=1, minutes=30)
+            schedule.append({
+                "time": current_time.strftime("%-I:%M %p"),
+                "activity": "Break for refreshments"
+            })
+        
+        # Add end time
+        current_time = start_time + timedelta(hours=duration)
+        schedule.append({
+            "time": current_time.strftime("%-I:%M %p"),
+            "activity": "Activity concludes"
+        })
+        
+        # Create the plan
+        plan = Plan(
+            activity_id=self.activity_id,
+            title=title,
+            description=description,  # Use the full description from AI
+            schedule=json.dumps(schedule),
+            status='draft'
+        )
+        
+        db.session.add(plan)
+        db.session.commit()
+        
+        # Update activity status
+        self.activity.status = 'planned'
+        db.session.commit()
+        
+        return plan
+    
     def _parse_conversation_input(self, input_text):
         """Extract key parameters from conversational input."""
         # Simple parsing logic - in a real implementation you would use NLP

@@ -41,7 +41,7 @@
                     <!-- Plan will appear here -->
                 </div>
                 <div class="card-footer">
-                    <button id="accept-plan-btn" class="btn btn-success">Accept Plan & Invite Participants</button>
+                    <button id="accept-plan-btn" class="btn btn-success">Accept Plan</button>
                     <button id="refine-plan-btn" class="btn btn-outline-primary">Refine Plan</button>
                 </div>
             </div>
@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle plan buttons
     document.getElementById('accept-plan-btn').addEventListener('click', function() {
-        window.location.href = `/activity/${activityId}/invite`;
+        window.location.href = `/activity/${activityId}`;
     });
     
     document.getElementById('refine-plan-btn').addEventListener('click', function() {

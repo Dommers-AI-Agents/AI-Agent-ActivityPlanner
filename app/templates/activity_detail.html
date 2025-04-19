@@ -127,8 +127,13 @@
             {% endif %}
             <!-- Participants Card -->
             <div class="card mb-4">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Participants</h5>
+                    {% if current_user.is_authenticated and activity.creator_id == current_user.id %}
+                    <button type="button" class="btn btn-sm btn-primary" id="add-participants-btn">
+                        <i class="fas fa-plus"></i> Add Participants
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -245,4 +250,112 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle generate plan button
+    const generatePlanBtn = document.getElementById('generate-plan-btn');
+    if (generatePlanBtn) {
+        generatePlanBtn.addEventListener('click', function() {
+            window.location.href = "{{ url_for('main.generate_plan', activity_id=activity.id) }}";
+        });
+    }
+    
+    // Handle add participants button
+    const addParticipantsBtn = document.getElementById('add-participants-btn');
+    if (addParticipantsBtn) {
+        addParticipantsBtn.addEventListener('click', function() {
+            // Create the participants modal
+            const modalHtml = `
+            <div class="modal fade" id="addParticipantsModal" tabindex="-1" aria-labelledby="addParticipantsModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="addParticipantsModalLabel">Add Participants</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="add-participants-form" action="/activity/{{ activity.id }}/add-participants" method="post">
+                                <div id="participants-list">
+                                    <div class="participant-entry mb-3">
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label for="participant_name_0" class="form-label">Name</label>
+                                                <input type="text" class="form-control" id="participant_name_0" name="participant_name[]" placeholder="Participant Name">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label for="participant_phone_0" class="form-label">Phone Number *</label>
+                                                <input type="tel" class="form-control" id="participant_phone_0" name="participant_phone[]" placeholder="(555) 123-4567" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label for="participant_email_0" class="form-label">Email</label>
+                                                <input type="email" class="form-control" id="participant_email_0" name="participant_email[]" placeholder="participant@example.com">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" id="add-more-btn" class="btn btn-outline-secondary mt-2">
+                                    <i class="fas fa-plus"></i> Add Another Participant
+                                </button>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="save-participants-btn">Send Invitations</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+            
+            // Append modal to body
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalHtml;
+            document.body.appendChild(modalContainer);
+            
+            // Initialize the Bootstrap modal
+            const modal = new bootstrap.Modal(document.getElementById('addParticipantsModal'));
+            modal.show();
+            
+            // Add event listener for "Add Another Participant" button
+            document.getElementById('add-more-btn').addEventListener('click', function() {
+                const participantsList = document.getElementById('participants-list');
+                const entryCount = participantsList.querySelectorAll('.participant-entry').length;
+                const newEntry = document.createElement('div');
+                newEntry.className = 'participant-entry mb-3';
+                newEntry.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="participant_name_${entryCount}" class="form-label">Name</label>
+                            <input type="text" class="form-control" id="participant_name_${entryCount}" name="participant_name[]" placeholder="Participant Name">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="participant_phone_${entryCount}" class="form-label">Phone Number *</label>
+                            <input type="tel" class="form-control" id="participant_phone_${entryCount}" name="participant_phone[]" placeholder="(555) 123-4567" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="participant_email_${entryCount}" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="participant_email_${entryCount}" name="participant_email[]" placeholder="participant@example.com">
+                        </div>
+                    </div>
+                    <hr>
+                `;
+                participantsList.appendChild(newEntry);
+            });
+            
+            // Handle form submission
+            document.getElementById('save-participants-btn').addEventListener('click', function() {
+                document.getElementById('add-participants-form').submit();
+            });
+            
+            // Clean up when modal is closed
+            document.getElementById('addParticipantsModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        });
+    }
+});
+</script>
 {% endblock %}

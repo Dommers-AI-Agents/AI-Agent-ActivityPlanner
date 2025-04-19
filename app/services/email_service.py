@@ -91,7 +91,7 @@ class EmailService:
             dict: Response data from SendGrid.
         """
         # Build the web URL
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         url = f"{app_url}/activity/{activity_id}?participant={participant_id}"
         
         # Define email subject
@@ -120,7 +120,7 @@ class EmailService:
             dict: Response data from SendGrid.
         """
         # Build the web URL
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         url = f"{app_url}/activity/{activity_id}/plan"
         
         # Define email subject
@@ -152,7 +152,7 @@ class EmailService:
             dict: Response data from SendGrid.
         """
         # Build the web URL
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         url = f"{app_url}/activity/{activity_id}/feedback"
         
         # Define email subject
@@ -184,7 +184,7 @@ class EmailService:
         # Build the web URL if activity_id is provided
         activity_url = None
         if activity_id:
-            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+            app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
             activity_url = f"{app_url}/activity/{activity_id}"
         
         # Create email content
@@ -214,7 +214,7 @@ class EmailService:
         # Build the web URL if activity_id is provided
         app_url = None
         if activity_id:
-            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+            app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
             url = f"{app_url}/activity/{activity_id}"
         
         # Create email content
@@ -242,7 +242,7 @@ class EmailService:
             dict: Response data from SendGrid.
         """
         # Build the reset URL
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+        app_url = current_app.config.get('APP_URL', 'https://localhost:5000')
         reset_url = f"{app_url}/auth/reset_password/{token}"
         
         # Define email subject

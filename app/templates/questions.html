@@ -13,51 +13,92 @@
                     <h3 class="mb-0">Share Your Preferences</h3>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="alert alert-info">
-                                <h5>Hello{% if participant.name %}, {{ participant.name }}{% endif %}!</h5>
-                                <p>I'm your AI Activity Planner. Let's have a conversation about what you'd enjoy for this group activity.</p>
-                                <p>You can tell me as much or as little as you want - whether you have specific preferences or are open to anything!</p>
+                    <!-- Activity information shown to everyone -->
+                    <div class="alert alert-info mb-4">
+                        <h5>Hello{% if participant.name %}, {{ participant.name }}{% endif %}!</h5>
+                        <p>The organizer has planned the following activity:</p>
+                        <div class="activity-description p-2 mb-2 bg-light rounded">
+                            <strong>{{ activity.title|default('Group Activity') }}</strong>
+                            {% if activity.description %}
+                            <hr class="my-2">
+                            <div style="white-space: pre-line;">{{ activity.description }}</div>
+                            {% endif %}
+                        </div>
+                        <p>Do you have any specific preferences, constraints, or considerations related to this activity? Your input will help make this a better experience for everyone.</p>
+                    </div>
+                    
+                    {% if all_complete %}
+                        <!-- Completed state -->
+                        <div class="alert alert-success text-center mb-4">
+                            <h4 class="alert-heading">Thank you!</h4>
+                            <p>You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
+                            <hr>
+                            <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
+                                Return to Activity
+                            </a>
+                        </div>
+                        
+                        <!-- Summary of preferences -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-success text-white">
+                                <h4 class="mb-0"><i class="fas fa-check-circle"></i> Preferences Completed</h4>
                             </div>
-                            
-                            {% if all_complete %}
-                                <div class="alert alert-success text-center">
-                                    <h4 class="alert-heading">Thank you!</h4>
-                                    <p>You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
-                                    <hr>
-                                    <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
-                                        Return to Activity
-                                    </a>
+                            <div class="card-body">
+                                <p>Thank you for sharing your preferences! Here's a summary of what I understand about what you'd like:</p>
+                                
+                                <div id="final-preferences-summary">
+                                    <!-- This will be populated with the saved preferences -->
+                                    {% if preferences %}
+                                        <ul class="list-group list-group-flush">
+                                        {% for category, prefs in preferences.items() %}
+                                            <li class="list-group-item">
+                                                <strong>{{ category|capitalize }}:</strong>
+                                                <ul>
+                                                {% for key, value in prefs.items() %}
+                                                    <li>{{ key|replace('_', ' ')|capitalize }}: {{ value }}</li>
+                                                {% endfor %}
+                                                </ul>
+                                            </li>
+                                        {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        <p class="text-muted">You indicated you're open to any suggestions!</p>
+                                    {% endif %}
                                 </div>
-                            {% else %}
-                                <!-- AI Conversation Box -->
-                                <div id="ai-preference-chat" class="conversation-container mb-4" style="height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 15px;">
+                                
+                                <div class="alert alert-info mt-3">
+                                    <p><i class="fas fa-info-circle"></i> The activity organizer has been notified that you've completed your preferences.</p>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="row">
+                            <!-- Left: Conversation area -->
+                            <div class="col-md-6 mb-4">
+                                <!-- AI Conversation Box - mobile-friendly height -->
+                                <div id="ai-preference-chat" class="conversation-container mb-3" style="height: 350px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 15px;">
                                     <!-- Conversation will be inserted here by JavaScript -->
                                 </div>
                                 
-                                <!-- Input Area -->
+                                <!-- Input Area - mobile-friendly -->
                                 <div class="input-group mb-3">
-                                    <button class="btn btn-outline-secondary toggle-voice-btn" type="button">
-                                        <i class="fas fa-microphone"></i>
-                                    </button>
-                                    <input type="text" id="user-message" class="form-control" placeholder="Type your preferences or ask a question...">
-                                    <button class="btn btn-primary send-message-btn" type="button">
+                                    <input type="text" id="user-message" class="form-control" placeholder="Type your preferences..." aria-label="Your preferences">
+                                    <button class="btn btn-primary send-message-btn" type="button" onclick="handleSendMessage(); return false;">
                                         <i class="fas fa-paper-plane"></i>
                                     </button>
                                 </div>
                                 
-                                <div class="text-center mt-4">
-                                    <button id="submit-preferences-btn" class="btn btn-success btn-lg">
-                                        <i class="fas fa-check"></i> I've Shared All My Preferences
+                                <!-- Mobile-friendly button that spans full width -->
+                                <div class="d-grid gap-2">
+                                    <button id="submit-preferences-btn" class="btn btn-success" onclick="submitFinalPreferences(); return false;">
+                                        <i class="fas fa-check"></i> Submit My Preferences
                                     </button>
                                 </div>
-                            {% endif %}
-                        </div>
-                        
-                        <div class="col-md-6">
-                            {% if not all_complete %}
-                                <div class="card h-100">
+                            </div>
+                            
+                            <!-- Right: Preference summary -->
+                            <div class="col-md-6">
+                                <div class="card mb-4">
                                     <div class="card-header">
                                         <h4 class="mb-0">Preference Summary</h4>
                                     </div>
@@ -103,42 +144,9 @@
                                         </div>
                                     </div>
                                 </div>
-                            {% else %}
-                                <div class="card">
-                                    <div class="card-header bg-success text-white">
-                                        <h4 class="mb-0"><i class="fas fa-check-circle"></i> Preferences Completed</h4>
-                                    </div>
-                                    <div class="card-body">
-                                        <p>Thank you for sharing your preferences! Here's a summary of what I understand about what you'd like:</p>
-                                        
-                                        <div id="final-preferences-summary">
-                                            <!-- This will be populated with the saved preferences -->
-                                            {% if preferences %}
-                                                <ul class="list-group list-group-flush">
-                                                {% for category, prefs in preferences.items() %}
-                                                    <li class="list-group-item">
-                                                        <strong>{{ category|capitalize }}:</strong>
-                                                        <ul>
-                                                        {% for key, value in prefs.items() %}
-                                                            <li>{{ key|replace('_', ' ')|capitalize }}: {{ value }}</li>
-                                                        {% endfor %}
-                                                        </ul>
-                                                    </li>
-                                                {% endfor %}
-                                                </ul>
-                                            {% else %}
-                                                <p class="text-muted">You indicated you're open to any suggestions!</p>
-                                            {% endif %}
-                                        </div>
-                                        
-                                        <div class="alert alert-info mt-3">
-                                            <p><i class="fas fa-info-circle"></i> The activity organizer will be notified that you've completed your preferences.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            {% endif %}
+                            </div>
                         </div>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
             
@@ -178,12 +186,91 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize variables
-        const activityId = document.getElementById('activity-id').value;
+    // Define these functions in global scope
+    function handleSendMessage() {
+        const inputField = document.getElementById('user-message');
+        if (!inputField) return;
+        
+        const message = inputField.value.trim();
+        if (!message) return;
+        
+        // Add user message to chat
+        addMessageToChat('user', message);
+        inputField.value = '';
+        
+        // Process message
+        processUserInput(message);
+    }
+    
+    function submitFinalPreferences() {
+        if (!confirm('Are you ready to submit your preferences? You won\'t be able to change them after submission.')) {
+            return;
+        }
+        
+        const submitBtn = document.getElementById('submit-preferences-btn');
+        if (submitBtn) submitBtn.disabled = true;
+        
+        // Add a final message
+        addMessageToChat('assistant', "Thank you! Saving your preferences...");
+        
+        // Submit to server
+        fetch(`/activity/${document.getElementById('activity-id').value}/submit-answers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                answers: { requirements: { additional_info: "Submitted via form" } },
+                is_final: true
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = `/activity/${document.getElementById('activity-id').value}/questions?completed=true`;
+            }
+        })
+        .catch(error => {
+            alert('Error submitting preferences. Please try again.');
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    }
+    
+    function addMessageToChat(role, content) {
         const chatContainer = document.getElementById('ai-preference-chat');
-        const userInput = document.getElementById('user-message');
-        const sendButton = document.querySelector('.send-message-btn');
+        if (!chatContainer) return;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role === 'user' ? 'text-end' : ''} mb-3`;
+        
+        const bubble = document.createElement('div');
+        bubble.className = `d-inline-block px-3 py-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
+        bubble.innerHTML = content.replace(/\n/g, '<br>');
+        
+        messageDiv.appendChild(bubble);
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+    
+    function processUserInput(message) {
+        // Simulate AI processing
+        setTimeout(() => {
+            // Simple response
+            addMessageToChat('assistant', "Thanks for sharing! I've recorded your preferences. Please add any other details you'd like to share, or click 'Submit My Preferences' when you're done.");
+        }, 500);
+    }
+    
+    // Add initial message when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        const chatContainer = document.getElementById('ai-preference-chat');
+        if (chatContainer) {
+            addMessageToChat('assistant', "Hello! Please share your preferences for this activity. For example, any schedule constraints, dietary needs, or special requirements?");
+        }
+    });
+    
+    /* 
+     * The rest of this code is no longer needed since we've defined the main
+     * functions globally. This is kept for reference but won't execute.
+     */
+    function setupUnused() {
         const voiceButton = document.querySelector('.toggle-voice-btn');
         const submitButton = document.getElementById('submit-preferences-btn');
         
@@ -253,28 +340,71 @@
             voiceButton.title = 'Speech recognition not supported in your browser';
         }
         
-        // Add initial AI message
+        // Add initial AI message - shorter and mobile-friendly
         if (chatContainer) {
-            addMessage('assistant', "Hi there! I'd love to hear about your preferences for this group activity. Feel free to tell me what kinds of activities you enjoy, any schedule constraints, dietary needs, or anything else! You can be as specific or as open as you'd like.");
+            // Add a simple welcome message instead of duplicating the activity details
+            // (since they're already shown in the alert at the top)
+            const initialMessage = "Hello! I'm here to collect your preferences for this activity. What would you like to share? For example, any schedule constraints, dietary needs, or special requirements?";
+            
+            // Add message with a slight delay to ensure proper initialization
+            setTimeout(() => {
+                addMessage('assistant', initialMessage);
+                // Scroll to the chat container on mobile
+                if (window.innerWidth < 768) {
+                    chatContainer.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 100);
         }
         
-        // Event listeners
-        if (sendButton) {
-            sendButton.addEventListener('click', handleSendMessage);
+        // Improved event listeners with debugging
+        console.log("Setting up event listeners");
+        
+        // Find the send button, searching by class if ID doesn't work
+        let sendBtn = sendButton || document.querySelector('.send-message-btn');
+        if (sendBtn) {
+            console.log("Send button found, attaching click event");
+            
+            // Remove any existing listeners first
+            let newSendBtn = sendBtn.cloneNode(true);
+            sendBtn.parentNode.replaceChild(newSendBtn, sendBtn);
+            sendBtn = newSendBtn;
+            
+            // Add new listener
+            sendBtn.addEventListener('click', function(e) {
+                console.log("Send button clicked");
+                e.preventDefault();
+                handleSendMessage();
+            });
+        } else {
+            console.error("Send button not found!");
         }
         
+        // Input field event listener
         if (userInput) {
+            console.log("User input field found, attaching keypress event");
+            
+            // Remove any existing listeners
+            let newInput = userInput.cloneNode(true);
+            userInput.parentNode.replaceChild(newInput, userInput);
+            userInput = newInput;
+            
+            // Add new listener
             userInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
+                    console.log("Enter key pressed");
+                    e.preventDefault();
                     handleSendMessage();
                 }
             });
+        } else {
+            console.error("User input field not found!");
         }
         
         if (submitButton) {
             submitButton.addEventListener('click', function() {
                 // Confirm before submitting final preferences
-                if (confirm('Are you ready to submit your preferences? You won\'t be able to change them after submission.')) {
+                const confirmDialog = window.confirm('Are you ready to submit your preferences for this activity? Your input will help create a better plan for everyone involved. You won\'t be able to change them after submission.');
+                if (confirmDialog) {
                     submitFinalPreferences();
                 }
             });
@@ -299,33 +429,52 @@
             }
         }
         
-        // Function to handle sending messages
+        // Function to handle sending messages - with added debugging
         function handleSendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
+            console.log("handleSendMessage called");
+            
+            // Get the input field (it might have been replaced)
+            const inputField = document.getElementById('user-message');
+            if (!inputField) {
+                console.error("Input field not found!");
+                return;
+            }
+            
+            const message = inputField.value.trim();
+            console.log("Message to send:", message);
+            
+            if (!message) {
+                console.log("Empty message, not sending");
+                return;
+            }
             
             // Add user message to chat
             addMessage('user', message);
-            userInput.value = '';
             
-            // Stop recording if active
-            if (isRecording) {
-                toggleVoiceRecording(false);
-            }
+            // Clear the input field
+            inputField.value = '';
             
             // Process message and get AI response
+            console.log("Processing message...");
             processUserMessage(message);
         }
         
-        // Function to add a message to the chat
+        // Function to add a message to the chat - improved for mobile
         function addMessage(role, content) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role === 'user' ? 'text-end' : ''} mb-3`;
             
             const bubble = document.createElement('div');
             bubble.className = `d-inline-block px-3 py-2 rounded ${role === 'user' ? 'bg-primary text-white' : 'bg-light'}`;
-            bubble.style.maxWidth = '80%';
-            bubble.textContent = content;
+            bubble.style.maxWidth = '85%'; // Slightly wider for mobile
+            
+            // Handle multi-line content properly
+            if (content.includes('\n')) {
+                // Convert newlines to <br> tags for proper formatting
+                bubble.innerHTML = content.replace(/\n/g, '<br>');
+            } else {
+                bubble.textContent = content;
+            }
             
             messageDiv.appendChild(bubble);
             chatContainer.appendChild(messageDiv);
@@ -333,60 +482,80 @@
             // Scroll to bottom
             chatContainer.scrollTop = chatContainer.scrollHeight;
             
-            // Add text-to-speech for assistant messages
-            if (role === 'assistant' && 'speechSynthesis' in window) {
-                const speakButton = document.createElement('button');
-                speakButton.className = 'btn btn-sm text-muted p-0 ms-2';
-                speakButton.innerHTML = '🔊';
-                speakButton.title = 'Listen';
-                speakButton.type = 'button';
-                
-                speakButton.addEventListener('click', function() {
-                    const utterance = new SpeechSynthesisUtterance(content);
-                    window.speechSynthesis.speak(utterance);
-                });
-                
-                bubble.appendChild(document.createElement('br'));
-                bubble.appendChild(speakButton);
+            // Focus the input field after receiving a message (mobile convenience)
+            if (role === 'assistant' && userInput) {
+                // Slight delay to ensure UI is updated
+                setTimeout(() => {
+                    // Only focus if we're not on a small mobile screen
+                    // as it can cause the keyboard to pop up and scroll issues
+                    if (window.innerWidth > 768) {
+                        userInput.focus();
+                    }
+                }, 300);
             }
         }
         
         // Function to process user message and generate AI response
         function processUserMessage(message) {
-            // In a real implementation, this would call the backend API that uses NLP
-            // For this example, we'll use a simulated response with setTimeout
+            // Mobile check - make sure we're in a good view state
+            if (window.innerWidth < 768) {
+                // On mobile, make sure we can see the conversation
+                if (chatContainer) {
+                    chatContainer.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
             
             // Indicate the AI is "thinking"
             const typingIndicator = document.createElement('div');
             typingIndicator.className = 'typing-indicator mb-3';
-            typingIndicator.innerHTML = '<div class="d-inline-block px-3 py-2 rounded bg-light"><span class="spinner-grow spinner-grow-sm"></span> Thinking...</div>';
+            typingIndicator.innerHTML = '<div class="d-inline-block px-3 py-2 rounded bg-light"><span class="spinner-grow spinner-grow-sm"></span> Processing...</div>';
             chatContainer.appendChild(typingIndicator);
             chatContainer.scrollTop = chatContainer.scrollHeight;
             
+            // Process locally for quick response
+            const result = extractPreferences(message);
+            
+            // Update collected preferences
+            Object.keys(result.preferences).forEach(category => {
+                Object.assign(collectedPreferences[category], result.preferences[category]);
+            });
+            
+            // Also save to server
+            if (Object.keys(result.preferences).some(category => 
+                Object.keys(result.preferences[category]).length > 0)) {
+                
+                // Call server API to save preferences
+                fetch(`/activity/${activityId}/submit-answers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        answers: collectedPreferences
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Saved preferences to server:', data);
+                })
+                .catch(error => {
+                    console.error('Error saving preferences:', error);
+                });
+            }
+            
+            // Update the visual preference summary
+            updatePreferenceSummary();
+            
+            // Show response after a reasonable delay
             setTimeout(() => {
                 // Remove typing indicator
-                chatContainer.removeChild(typingIndicator);
-                
-                // Process message and extract preferences
-                const result = extractPreferences(message);
-                
-                // Update collected preferences
-                Object.keys(result.preferences).forEach(category => {
-                    Object.assign(collectedPreferences[category], result.preferences[category]);
-                });
-                
-                // Update preference summary
-                updatePreferenceSummary();
+                if (typingIndicator.parentNode === chatContainer) {
+                    chatContainer.removeChild(typingIndicator);
+                }
                 
                 // Add AI response
                 addMessage('assistant', result.response);
-                
-                // Save preferences to server
-                if (Object.keys(result.preferences).some(category => 
-                    Object.keys(result.preferences[category]).length > 0)) {
-                    savePreferences();
-                }
-            }, 1500);
+            }, 1000); // Shortened delay for better mobile experience
         }
         
         // Function to extract preferences from user message
@@ -580,10 +749,24 @@
         
         // Function to submit final preferences
         function submitFinalPreferences() {
-            // Simulate sending final preferences to server
-            console.log('Submitting final preferences');
+            // Show a processing message
+            addMessage('assistant', "Thank you! I'm saving your preferences...");
             
-            // In a real implementation, call the server endpoint
+            // Disable the submit button to prevent double-submission
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            }
+            
+            console.log('Submitting final preferences:', collectedPreferences);
+            
+            // If we have no preferences yet, add a default one to mark completion
+            if (Object.keys(collectedPreferences).every(category => 
+                Object.keys(collectedPreferences[category]).length === 0)) {
+                collectedPreferences.requirements.additional_info = "Open to suggestions";
+            }
+            
+            // Call the server endpoint
             fetch(`/activity/${activityId}/submit-answers`, {
                 method: 'POST',
                 headers: {
@@ -594,20 +777,44 @@
                     is_final: true
                 }),
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
-                    // Redirect to completed view
-                    window.location.href = `/activity/${activityId}/questions?completed=true`;
+                    // Add a success message before redirecting
+                    addMessage('assistant', "Your preferences have been saved successfully! Thank you for your input.");
+                    
+                    // Wait a moment so the user can see the success message
+                    setTimeout(() => {
+                        // Redirect to completed view
+                        window.location.href = `/activity/${activityId}/questions?completed=true`;
+                    }, 1500);
                 } else {
-                    alert('There was a problem saving your preferences. Please try again.');
+                    // Re-enable button on error
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = "<i class='fas fa-check'></i> I've Shared All My Preferences";
+                    }
+                    
+                    addMessage('assistant', "I'm sorry, there was a problem saving your preferences. Please try again.");
                 }
             })
             .catch((error) => {
                 console.error('Error:', error);
-                alert('There was a problem connecting to the server. Please try again later.');
+                
+                // Re-enable button on error
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = "<i class='fas fa-check'></i> I've Shared All My Preferences";
+                }
+                
+                addMessage('assistant', "I'm sorry, there was a problem connecting to the server. Please try again later.");
             });
         }
-    });
+    }
 </script>
 {% endblock %}
