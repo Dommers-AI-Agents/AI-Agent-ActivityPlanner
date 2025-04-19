@@ -558,6 +558,10 @@ class ActivityPlanner:
             activity_id=self.activity_id,
             title=title,
             description=description,
+            scheduled_date=self.activity.proposed_date,  # Copy date from activity
+            time_window=self.activity.time_window,      # Copy time window from activity
+            start_time=self.activity.start_time,        # Copy start time from activity
+            location_address=self.activity.location_address,  # Copy address from activity
             schedule=json.dumps(schedule),
             status='draft'
         )
@@ -792,6 +796,10 @@ class ActivityPlanner:
             activity_id=self.activity_id,
             title=title,
             description=description,
+            scheduled_date=self.activity.proposed_date if self.activity else None,  # Copy date from activity
+            time_window=self.activity.time_window if self.activity else None,      # Copy time window from activity
+            start_time=self.activity.start_time if self.activity else None,        # Copy start time from activity
+            location_address=self.activity.location_address if self.activity else None,  # Copy address from activity
             schedule=json.dumps(schedule),
             status='draft'
         )
@@ -807,13 +815,25 @@ class ActivityPlanner:
 
     def revise_plan(self, plan_id, feedback, participant_id=None):
         """Revise an existing plan based on feedback."""
+        from flask import current_app
+        
         plan = Plan.query.get(plan_id)
         if not plan:
             raise ValueError(f"Plan with ID {plan_id} not found")
             
-        # Store the feedback
+        # Store the feedback - with extra logging
         if participant_id:
+            current_app.logger.info(f"Inside revise_plan: Saving feedback for participant {participant_id}")
             self.save_preference(participant_id, 'feedback', 'plan_feedback', feedback)
+            
+            # Verify the save worked
+            saved_prefs = Preference.query.filter_by(
+                activity_id=self.activity_id,
+                participant_id=participant_id,
+                category='feedback',
+                key='plan_feedback'
+            ).all()
+            current_app.logger.info(f"Inside revise_plan: Found {len(saved_prefs)} feedback preferences after saving")
         
         # Get all feedback for this plan
         all_feedback = []
@@ -1063,6 +1083,322 @@ class ActivityPlanner:
             
             return fallback_response
 
+    def analyze_feedback_with_claude(self, plan_id):
+        """Analyze feedback from all participants and generate suggestions for plan improvements.
+        
+        Args:
+            plan_id (str): The plan ID to analyze feedback for.
+            
+        Returns:
+            AISuggestion: The AI suggestion object with recommended changes.
+        """
+        from app.models.database import AISuggestion, Preference
+        from app.services.claude_service import claude_service
+        from flask import current_app
+        
+        plan = Plan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan with ID {plan_id} not found")
+        
+        # Get all feedback for this activity
+        feedback_list = Preference.get_feedback_for_activity(self.activity_id)
+        
+        # If no feedback is available, use a placeholder for Claude to just analyze the plan itself
+        if not feedback_list:
+            feedback_list = [{
+                'participant_name': 'System',
+                'feedback': 'No participant feedback available yet. Please analyze the plan for any potential improvements.',
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M')
+            }]
+        
+        # Get current plan details
+        current_plan = {
+            'title': plan.title,
+            'description': plan.description,
+            'scheduled_date': plan.scheduled_date.strftime('%Y-%m-%d') if plan.scheduled_date else None,
+            'time_window': plan.time_window,
+            'start_time': plan.start_time,
+            'location_address': plan.location_address,
+            'schedule': json.loads(plan.schedule) if plan.schedule else []
+        }
+        
+        # Construct prompt for Claude
+        system_prompt = """
+        You are an AI-powered Activity Planner that analyzes plans and suggests improvements.
+        
+        Your task is to:
+        1. Review the current plan and any available feedback from participants
+        2. Identify potential improvements or enhancements to the plan
+        3. Recommend specific changes to improve the plan
+        4. Create a clear summary of your recommendations
+        
+        Format your response as JSON with the following structure:
+        {
+            "summary": "A concise summary of your analysis and overall recommendations",
+            "changes": [
+                "Specific change #1 recommendation",
+                "Specific change #2 recommendation"
+            ],
+            "revised_title": "Suggested new title if needed",
+            "revised_description": "Suggested revised description if needed",
+            "revised_date": "YYYY-MM-DD (only if date change is suggested)",
+            "revised_start_time": "HH:MM (only if time change is suggested)",
+            "revised_location": "New location address (only if location change is suggested)"
+        }
+        """
+        
+        # Format feedback for the prompt
+        feedback_text = ""
+        for i, fb in enumerate(feedback_list, 1):
+            feedback_text += f"Feedback #{i} from {fb['participant_name']}:\n{fb['feedback']}\n\n"
+        
+        message = f"""
+        I need to analyze{' participant feedback for' if len(feedback_list) > 1 else ''} an activity plan and suggest improvements.
+        
+        Current plan details:
+        
+        Title: {current_plan['title']}
+        Date: {current_plan['scheduled_date'] or 'Not specified'}
+        Time: {current_plan['start_time'] or 'Not specified'} ({current_plan['time_window'] or 'No time window specified'})
+        Location: {current_plan['location_address'] or 'Not specified'}
+        
+        Description:
+        {current_plan['description']}
+        
+        Schedule:
+        {json.dumps(current_plan['schedule'], indent=2) if current_plan['schedule'] else 'No detailed schedule'}
+        
+        {'Participant Feedback:' if len(feedback_list) > 1 or feedback_list[0]['participant_name'] != 'System' else 'Note:'}
+        {feedback_text}
+        
+        {'Please analyze this feedback and suggest changes to improve the plan. Focus on addressing the most important concerns while staying true to the original activity concept.' if len(feedback_list) > 1 or feedback_list[0]['participant_name'] != 'System' else 'Please analyze this plan and suggest potential improvements or enhancements. Even though there is no participant feedback yet, identify any areas that could be improved or clarified to create a better experience.'}
+        """
+        
+        try:
+            # Call Claude API
+            messages = [{"role": "user", "content": message}]
+            response = claude_service._call_claude_api(system_prompt, messages)
+            
+            # Parse the response
+            response_content = response.get("content", [])[0].get("text", "")
+            
+            try:
+                # Parse JSON response - first clean it up to avoid parsing issues
+                clean_response = response_content.strip()
+                
+                # If it starts with markdown JSON code block, remove it
+                if clean_response.startswith("```json"):
+                    end_marker = "```"
+                    if end_marker in clean_response:
+                        clean_response = clean_response[7:clean_response.rindex(end_marker)].strip()
+                
+                # Try to parse as JSON
+                suggestion_data = json.loads(clean_response)
+                
+                # Create AISuggestion object
+                suggestion = AISuggestion(
+                    plan_id=plan_id,
+                    activity_id=self.activity_id,
+                    summary=suggestion_data.get('summary', 'No summary provided'),
+                    changes=json.dumps(suggestion_data.get('changes', [])),
+                )
+                
+                # Log the data we're saving
+                current_app.logger.info(f"Saving AI suggestion with summary: {suggestion.summary[:100]}...")
+                current_app.logger.info(f"Changes: {suggestion.changes[:100]}...")
+                
+                # Save the suggestion to database
+                db.session.add(suggestion)
+                db.session.commit()
+                
+                return suggestion
+                
+            except json.JSONDecodeError as e:
+                # Handle non-JSON response
+                current_app.logger.error(f"Failed to parse Claude response as JSON: {e}")
+                current_app.logger.error(f"Response content: {response_content[:500]}")
+                
+                # Try to extract useful content from the response
+                # Even if it's not valid JSON, see if we can parse out suggestions
+                suggestions = []
+                
+                # Look for potential suggestions in the text
+                if "recommendations" in response_content.lower() or "suggestions" in response_content.lower() or "changes" in response_content.lower():
+                    lines = response_content.split('\n')
+                    for line in lines:
+                        # Look for bullet points or numbered items that might be suggestions
+                        if line.strip().startswith('-') or line.strip().startswith('*') or re.match(r'^\d+\.', line.strip()):
+                            suggestions.append(line.strip())
+                
+                # If we couldn't find any suggestions, use a default message
+                if not suggestions:
+                    suggestions = ["Please review the plan and feedback manually and make appropriate changes."]
+                
+                # Create a suggestion with the extracted suggestions or default
+                suggestion = AISuggestion(
+                    plan_id=plan_id,
+                    activity_id=self.activity_id,
+                    summary=f"Claude analyzed {len(feedback_list)} pieces of feedback but provided an unstructured response.",
+                    changes=json.dumps(suggestions)
+                )
+                
+                db.session.add(suggestion)
+                db.session.commit()
+                
+                return suggestion
+                
+        except Exception as e:
+            current_app.logger.error(f"Error analyzing feedback with Claude: {str(e)}")
+            raise
+    
+    def apply_ai_suggestions(self, suggestion_id):
+        """Apply AI suggestions to create a new plan version.
+        
+        Args:
+            suggestion_id (str): The AI suggestion ID to apply.
+            
+        Returns:
+            Plan: The updated plan with applied suggestions.
+        """
+        from app.models.database import AISuggestion, Plan
+        
+        # Get the suggestion
+        suggestion = AISuggestion.query.get(suggestion_id)
+        if not suggestion:
+            raise ValueError(f"Suggestion with ID {suggestion_id} not found")
+        
+        # Get the original plan
+        original_plan = Plan.query.get(suggestion.plan_id)
+        if not original_plan:
+            raise ValueError(f"Original plan with ID {suggestion.plan_id} not found")
+        
+        # Get suggestion data
+        suggestion_data = {}
+        try:
+            # Try to parse the suggestion response as JSON
+            suggestion_data = json.loads(suggestion.changes)
+        except (json.JSONDecodeError, TypeError):
+            # If it's not valid JSON, use an empty dict
+            suggestion_data = {}
+        
+        # Create a new revised plan
+        revised_plan = Plan(
+            activity_id=self.activity_id,
+            title=suggestion_data.get('revised_title', f"Revised: {original_plan.title}"),
+            description=suggestion_data.get('revised_description', original_plan.description),
+            scheduled_date=original_plan.scheduled_date,
+            time_window=original_plan.time_window,
+            start_time=suggestion_data.get('revised_start_time', original_plan.start_time),
+            location_address=suggestion_data.get('revised_location', original_plan.location_address),
+            schedule=original_plan.schedule,  # Keep original schedule for now
+            status='revised'
+        )
+        
+        # Add a note about the AI-suggested changes
+        if suggestion.summary:
+            revised_plan.description += f"\n\nRevisions based on AI analysis of participant feedback:\n{suggestion.summary}"
+        
+        db.session.add(revised_plan)
+        db.session.commit()
+        
+        return revised_plan
+    
+    def update_plan_manually(self, plan_id, updated_data):
+        """Update a plan manually with provided data.
+        
+        Args:
+            plan_id (str): The plan ID to update.
+            updated_data (dict): The updated plan data.
+            
+        Returns:
+            Plan: The updated plan.
+        """
+        from app.models.database import Plan
+        import datetime
+        
+        # Get the plan
+        plan = Plan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan with ID {plan_id} not found")
+        
+        # Create a new plan with updated data
+        new_plan = Plan(
+            activity_id=self.activity_id,
+            title=updated_data.get('plan_title', plan.title),
+            description=updated_data.get('plan_description', plan.description),
+            schedule=plan.schedule,  # Keep original schedule data
+            status='revised'
+        )
+        
+        # Handle date
+        if 'scheduled_date' in updated_data and updated_data['scheduled_date']:
+            try:
+                new_plan.scheduled_date = datetime.datetime.strptime(
+                    updated_data['scheduled_date'], '%Y-%m-%d'
+                ).date()
+            except Exception as e:
+                # Leave as None if there's an error
+                current_app.logger.error(f"Error parsing date: {str(e)}")
+        
+        # Add other fields
+        new_plan.time_window = updated_data.get('time_window', plan.time_window)
+        new_plan.start_time = updated_data.get('start_time', plan.start_time)
+        new_plan.location_address = updated_data.get('location_address', plan.location_address)
+        
+        # Add note about manual update
+        new_plan.description += "\n\nThis plan was manually updated by the activity creator based on participant feedback."
+        
+        db.session.add(new_plan)
+        db.session.commit()
+        
+        return new_plan
+    
+    def request_plan_approval(self, plan_id):
+        """Request approval from all participants for a plan.
+        
+        Args:
+            plan_id (str): The plan ID to request approval for.
+            
+        Returns:
+            bool: True if successful.
+        """
+        from app.models.database import Plan, PlanApproval, Participant
+        
+        # Get the plan
+        plan = Plan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan with ID {plan_id} not found")
+        
+        # Set plan to require approval
+        plan.requires_approval = True
+        plan.status = 'pending_approval'
+        
+        # Create approval requests for all participants
+        participants = Participant.query.filter_by(activity_id=self.activity_id).all()
+        
+        for participant in participants:
+            # Create or update approval record
+            existing_approval = PlanApproval.query.filter_by(
+                plan_id=plan_id,
+                participant_id=participant.id
+            ).first()
+            
+            if existing_approval:
+                # Reset existing approval
+                existing_approval.approved = False
+                existing_approval.feedback = None
+            else:
+                # Create new approval request
+                approval = PlanApproval(
+                    plan_id=plan_id,
+                    participant_id=participant.id,
+                    approved=False
+                )
+                db.session.add(approval)
+        
+        db.session.commit()
+        return True
+    
     def revise_plan_with_claude(self, plan_id, feedback):
         """Revise a plan with Claude based on feedback.
         
@@ -1258,6 +1594,10 @@ class ActivityPlanner:
             activity_id=self.activity_id,
             title=title,
             description=description,
+            scheduled_date=self.activity.proposed_date if self.activity else None,  # Copy date from activity
+            time_window=self.activity.time_window if self.activity else None,      # Copy time window from activity
+            start_time=self.activity.start_time if self.activity else None,        # Copy start time from activity
+            location_address=self.activity.location_address if self.activity else None,  # Copy address from activity
             schedule=json.dumps(schedule),
             status='draft'
         )

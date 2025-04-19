@@ -18,14 +18,32 @@ class SMSService:
     
     def init_app(self, app):
         """Initialize the service with a Flask app."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         self.app = app
+        logger.info("Initializing SMS service")
         
         # Initialize Twilio client
         account_sid = app.config.get('TWILIO_ACCOUNT_SID')
         auth_token = app.config.get('TWILIO_AUTH_TOKEN')
+        phone_number = app.config.get('TWILIO_PHONE_NUMBER')
+        
+        # Log configuration status
+        logger.info(f"Twilio configuration: ACCOUNT_SID={'CONFIGURED' if account_sid else 'MISSING'}, "
+                   f"AUTH_TOKEN={'CONFIGURED' if auth_token else 'MISSING'}, "
+                   f"PHONE_NUMBER={'CONFIGURED' if phone_number else 'MISSING'}")
         
         if account_sid and auth_token:
-            self.client = Client(account_sid, auth_token)
+            try:
+                self.client = Client(account_sid, auth_token)
+                logger.info("Twilio client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Twilio client: {str(e)}", exc_info=True)
+                self.client = None
+        else:
+            logger.warning("Twilio client not initialized due to missing credentials")
+            self.client = None
     
     def send_message(self, to_number, body, from_number=None):
         """Send an SMS message.
@@ -38,36 +56,66 @@ class SMSService:
         Returns:
             dict: Response data from Twilio.
         """
-        if not self.client:
-            if not self.app:
-                raise RuntimeError("SMS service not initialized with app")
-            self.init_app(self.app)
+        import logging
+        logger = logging.getLogger(__name__)
         
-        if not self.client:
-            raise RuntimeError("Twilio client not initialized")
-        
-        # Use configured Twilio number if not specified
-        if not from_number:
-            from_number = current_app.config.get('TWILIO_PHONE_NUMBER')
+        try:
+            # Check if client is initialized
+            if not self.client:
+                if not self.app:
+                    logger.error("SMS service not initialized with app")
+                    raise RuntimeError("SMS service not initialized with app")
+                
+                # Try to initialize with app
+                logger.info("Attempting to initialize SMS service")
+                self.init_app(self.app)
+            
+            # Verify client initialization
+            if not self.client:
+                # Check if Twilio credentials are configured
+                account_sid = current_app.config.get('TWILIO_ACCOUNT_SID')
+                auth_token = current_app.config.get('TWILIO_AUTH_TOKEN')
+                
+                if not account_sid or not auth_token:
+                    logger.error("Twilio credentials missing: ACCOUNT_SID=%s, AUTH_TOKEN=%s", 
+                               "CONFIGURED" if account_sid else "MISSING",
+                               "CONFIGURED" if auth_token else "MISSING")
+                
+                raise RuntimeError("Twilio client not initialized - check credentials")
+            
+            # Use configured Twilio number if not specified
             if not from_number:
-                raise ValueError("No 'from' phone number specified and TWILIO_PHONE_NUMBER not configured")
+                from_number = current_app.config.get('TWILIO_PHONE_NUMBER')
+                if not from_number:
+                    logger.error("TWILIO_PHONE_NUMBER not configured in app settings")
+                    raise ValueError("No 'from' phone number specified and TWILIO_PHONE_NUMBER not configured")
+            
+            # Clean phone numbers to ensure they're in E.164 format
+            to_number = self._clean_phone_number(to_number)
+            
+            # Log the SMS being sent
+            logger.info(f"Sending SMS to {to_number} from {from_number}")
+            
+            # Send message
+            message = self.client.messages.create(
+                to=to_number,
+                from_=from_number,
+                body=body
+            )
+            
+            # Log success
+            logger.info(f"SMS sent successfully: SID={message.sid}, Status={message.status}")
+            
+            return {
+                'sid': message.sid,
+                'status': message.status,
+                'to': message.to,
+                'body': message.body
+            }
         
-        # Clean phone numbers to ensure they're in E.164 format
-        to_number = self._clean_phone_number(to_number)
-        
-        # Send message
-        message = self.client.messages.create(
-            to=to_number,
-            from_=from_number,
-            body=body
-        )
-        
-        return {
-            'sid': message.sid,
-            'status': message.status,
-            'to': message.to,
-            'body': message.body
-        }
+        except Exception as e:
+            logger.error(f"Failed to send SMS to {to_number}: {str(e)}", exc_info=True)
+            raise
     
     def send_welcome_message(self, to_number, activity_id, participant_id=None):
         """Send a welcome message with a link to the web application.

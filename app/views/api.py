@@ -114,14 +114,8 @@ def converse_with_planner(activity_id):
         if 'message' in claude_response:
             planner.save_conversation_message(claude_response['message'], is_user=False)
         
-        # For any complex input about museum trips and group activities,
-        # use the mock function to generate a rich plan with good details
-        if "museum" in input_text.lower() or "new york" in input_text.lower() or "family" in input_text.lower():
-            mock_plan = claude_service._mock_generate_plan({})
-            plan = planner.create_plan_from_claude(mock_plan)
-        else:
-            # Create a plan with Claude's guidance
-            plan = planner.generate_quick_plan(input_text)
+        # Always create a plan with Claude's guidance based on the actual input
+        plan = planner.generate_quick_plan(input_text)
         
         # Return the plan with Claude's conversational response
         return jsonify({

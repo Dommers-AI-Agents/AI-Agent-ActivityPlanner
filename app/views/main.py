@@ -2,7 +2,7 @@
 Main routes for the Group Activity Planner web interface.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, abort, current_app
-from app.models.database import Activity, Participant, Plan, Preference
+from app.models.database import Activity, Participant, Plan, Preference, AISuggestion, PlanApproval
 from app.models.planner import ActivityPlanner
 from app.services.sms_service import sms_service
 from app.services.email_service import email_service
@@ -10,6 +10,7 @@ from app.services.claude_service import claude_service
 from sqlalchemy import text
 from app import db
 from flask_login import login_required, current_user
+from datetime import datetime
 
 main_bp = Blueprint('main', __name__)
 
@@ -37,6 +38,19 @@ def create_activity():
         organizer_name = request.form.get('organizer_name')
         organizer_phone = request.form.get('organizer_phone')
         organizer_email = request.form.get('organizer_email')
+        
+        # Get date and time window information
+        activity_date = request.form.get('activity_date')
+        activity_time_window = request.form.get('activity_time_window')
+        activity_start_time = request.form.get('activity_start_time')
+        activity_location = request.form.get('activity_location')
+        
+        # Handle custom time window if selected
+        if activity_time_window == 'Custom':
+            time_start = request.form.get('activity_time_start')
+            time_end = request.form.get('activity_time_end')
+            if time_start and time_end:
+                activity_time_window = f"Custom ({time_start} to {time_end})"
 
         # Check for AI conversation data
         ai_conversation_summary = request.form.get('ai_conversation_summary')
@@ -55,6 +69,28 @@ def create_activity():
             activity.description = activity_description
         elif activity_type:
             activity.description = ai_conversation_summary
+        
+        # Save date and time window
+        if activity_date:
+            try:
+                activity.proposed_date = datetime.strptime(activity_date, '%Y-%m-%d').date()
+            except Exception as e:
+                current_app.logger.error(f"Error parsing date {activity_date}: {str(e)}")
+        
+        if activity_time_window:
+            activity.time_window = activity_time_window
+            
+        if activity_start_time:
+            activity.start_time = activity_start_time
+            
+        if activity_location:
+            activity.location_address = activity_location
+        
+        # Save the date and time as preferences too, for easier querying
+        planner.save_preference(None, 'timing', 'proposed_date', activity_date)
+        planner.save_preference(None, 'timing', 'time_window', activity_time_window)
+        planner.save_preference(None, 'timing', 'start_time', activity_start_time)
+        planner.save_preference(None, 'location', 'address', activity_location)
             
         db.session.commit()
         
@@ -97,21 +133,29 @@ def create_activity():
                 
                 # Send SMS invitation
                 try:
-                    sms_service.send_welcome_message(phone, activity.id, participant.id)
+                    current_app.logger.info(f"Attempting to send SMS to {phone} for activity {activity.id}")
+                    result = sms_service.send_welcome_message(phone, activity.id, participant.id)
+                    current_app.logger.info(f"SMS sent successfully to {phone}: {result}")
                 except Exception as e:
-                    current_app.logger.error(f"Failed to send SMS to {phone}: {str(e)}")
+                    current_app.logger.error(f"Failed to send SMS to {phone}: {str(e)}", exc_info=True)
+                    # Add a flash message to notify about the SMS failure
+                    flash(f"Note: SMS invitation to {phone} couldn't be sent. Participants can still be invited manually.", "warning")
                 
                 # Send email invitation if available
                 if email:
                     try:
+                        current_app.logger.info(f"Attempting to send email to {email} for activity {activity.id}")
                         email_service.send_welcome_email(
                             email,
                             name or "Participant",
                             activity.id,
                             participant.id
                         )
+                        current_app.logger.info(f"Email sent successfully to {email}")
                     except Exception as e:
-                        current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
+                        current_app.logger.error(f"Failed to send email to {email}: {str(e)}", exc_info=True)
+                        # Add a flash message to notify about the email failure
+                        flash(f"Note: Email invitation to {email} couldn't be sent.", "warning")
         
         # Generate the plan from AI conversation before redirecting
         # This ensures we have the plan created from user-AI conversation
@@ -625,22 +669,30 @@ def view_plan(activity_id):
 def submit_feedback(activity_id):
     """Submit feedback on the plan."""
     # Get the activity
+    current_app.logger.info(f"Processing feedback for activity ID: {activity_id}")
     activity = Activity.query.get_or_404(activity_id)
     
     # Get the most recent plan
     plan = Plan.query.filter_by(activity_id=activity_id).order_by(Plan.created_at.desc()).first()
     if not plan:
+        current_app.logger.warning(f"No plan found for activity {activity_id}")
         flash("No plan has been generated yet.", "warning")
         return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    current_app.logger.info(f"Found plan: {plan.id} (status: {plan.status})")
     
     # Get the participant from session
     participant_id = session.get(f'activity_{activity_id}_participant')
     if not participant_id:
+        current_app.logger.warning(f"No participant ID in session for activity {activity_id}")
         flash("Please access this page through your invitation link.", "error")
         return redirect(url_for('main.index'))
     
+    current_app.logger.info(f"Participant ID from session: {participant_id}")
+    
     participant = Participant.query.get(participant_id)
     if not participant or participant.activity_id != activity_id:
+        current_app.logger.warning(f"Invalid participant {participant_id} for activity {activity_id}")
         flash("Invalid participant access.", "error")
         return redirect(url_for('main.index'))
     
@@ -651,10 +703,22 @@ def submit_feedback(activity_id):
         if feedback:
             # Initialize planner and revise plan
             planner = ActivityPlanner(activity_id)
-            revised_plan = planner.revise_plan(plan.id, feedback)
             
-            # Save the feedback as a preference
+            # First save the feedback as a preference to ensure it's stored
+            current_app.logger.info(f"Saving feedback preference for activity {activity_id}, participant {participant_id}: {feedback[:50]}...")
             planner.save_preference(participant_id, 'feedback', 'plan_feedback', feedback)
+            
+            # Verify the preference was saved
+            prefs = Preference.query.filter_by(
+                activity_id=activity_id,
+                participant_id=participant_id,
+                category='feedback',
+                key='plan_feedback'
+            ).all()
+            current_app.logger.info(f"After saving, found {len(prefs)} feedback preferences")
+            
+            # Then revise the plan
+            revised_plan = planner.revise_plan(plan.id, feedback, participant_id=participant_id)
             
             flash("Thank you for your feedback! The plan has been updated.", "success")
             
@@ -681,6 +745,44 @@ def submit_feedback(activity_id):
         plan=plan,
         participant=participant
     )
+    
+@main_bp.route('/activity/<activity_id>/add-test-feedback/<participant_id>', methods=['GET'])
+def add_test_feedback(activity_id, participant_id):
+    """Add test feedback for debugging purposes."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Get the participant
+    participant = Participant.query.get_or_404(participant_id)
+    if participant.activity_id != activity_id:
+        return jsonify({"error": "Participant does not belong to this activity"}), 400
+    
+    # Get the most recent plan
+    plan = Plan.query.filter_by(activity_id=activity_id).order_by(Plan.created_at.desc()).first()
+    if not plan:
+        return jsonify({"error": "No plan found for this activity"}), 404
+    
+    # Add test feedback
+    planner = ActivityPlanner(activity_id)
+    test_feedback = f"This is test feedback added for debugging purposes at {datetime.now()}."
+    
+    # Save the feedback directly
+    planner.save_preference(participant_id, 'feedback', 'plan_feedback', test_feedback)
+    
+    # Check if it was saved
+    prefs = Preference.query.filter_by(
+        activity_id=activity_id,
+        participant_id=participant_id,
+        category='feedback',
+        key='plan_feedback'
+    ).all()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Test feedback added for participant {participant_id}",
+        "preferences_saved": len(prefs),
+        "feedback": test_feedback
+    })
 @main_bp.route('/activity/<activity_id>/process-input', methods=['POST'])
 def process_conversation_input(activity_id):
     """Process conversational input and generate a plan."""
@@ -794,21 +896,29 @@ def add_participants(activity_id):
                 
                 # Send SMS invitation
                 try:
-                    sms_service.send_welcome_message(phone, activity.id, participant.id)
+                    current_app.logger.info(f"Attempting to send SMS to {phone} for activity {activity.id}")
+                    result = sms_service.send_welcome_message(phone, activity.id, participant.id)
+                    current_app.logger.info(f"SMS sent successfully to {phone}: {result}")
                 except Exception as e:
-                    current_app.logger.error(f"Failed to send SMS to {phone}: {str(e)}")
+                    current_app.logger.error(f"Failed to send SMS to {phone}: {str(e)}", exc_info=True)
+                    # Add a flash message to notify about the SMS failure
+                    flash(f"Note: SMS invitation to {phone} couldn't be sent. Participants can still be invited manually.", "warning")
                 
                 # Send email invitation if available
                 if email:
                     try:
+                        current_app.logger.info(f"Attempting to send email to {email} for activity {activity.id}")
                         email_service.send_welcome_email(
                             email,
                             name or "Participant",
                             activity.id,
                             participant.id
                         )
+                        current_app.logger.info(f"Email sent successfully to {email}")
                     except Exception as e:
-                        current_app.logger.error(f"Failed to send email to {email}: {str(e)}")
+                        current_app.logger.error(f"Failed to send email to {email}: {str(e)}", exc_info=True)
+                        # Add a flash message to notify about the email failure
+                        flash(f"Note: Email invitation to {email} couldn't be sent.", "warning")
                 
                 success_count += 1
             except Exception as e:
@@ -904,3 +1014,239 @@ def conversation_planner(activity_id):
         return redirect(url_for('main.dashboard'))
     
     return render_template('conversation_planner.html', activity=activity)
+
+@main_bp.route('/activity/<activity_id>/manage-feedback')
+@login_required
+def manage_feedback(activity_id):
+    """Activity feedback management page."""
+    # Get the activity
+    current_app.logger.info(f"Managing feedback for activity ID: {activity_id}")
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        current_app.logger.warning(f"User {current_user.id} tried to access activity {activity_id} but is not the creator")
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the most recent plan
+    plan = Plan.query.filter_by(activity_id=activity_id).order_by(Plan.created_at.desc()).first()
+    if not plan:
+        flash("No plan has been generated yet for this activity.", "warning")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    # Get all feedback for this activity
+    feedback_list = Preference.get_feedback_for_activity(activity_id)
+    
+    # Log what feedback we found for debugging
+    current_app.logger.info(f"Found {len(feedback_list)} feedback entries for activity {activity_id}")
+    for feedback in feedback_list:
+        current_app.logger.info(f"  - Feedback from {feedback['participant_name']}: {feedback['feedback'][:50]}...")
+    
+    # Get all feedback preferences directly for debugging
+    all_feedback_prefs = Preference.query.filter_by(
+        activity_id=activity_id, 
+        category='feedback'
+    ).all()
+    current_app.logger.info(f"Direct query found {len(all_feedback_prefs)} feedback preferences")
+    for pref in all_feedback_prefs:
+        current_app.logger.info(f"  - Preference {pref.id}: category={pref.category}, key={pref.key}, value={pref.value[:50] if pref.value else None}...")
+    
+    # Get AI suggestions if available
+    ai_suggestions = AISuggestion.query.filter_by(
+        plan_id=plan.id
+    ).order_by(AISuggestion.created_at.desc()).first()
+    
+    return render_template(
+        'feedback_management.html',
+        activity=activity,
+        plan=plan,
+        feedback_list=feedback_list,
+        ai_suggestions=ai_suggestions
+    )
+
+@main_bp.route('/activity/<activity_id>/plan/<plan_id>/analyze_feedback', methods=['POST'])
+@login_required
+def analyze_feedback(activity_id, plan_id):
+    """Analyze feedback for a plan and generate AI suggestions."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        return jsonify({"success": False, "error": "You don't have permission to do that."}), 403
+    
+    # Get the plan
+    plan = Plan.query.get_or_404(plan_id)
+    if plan.activity_id != activity_id:
+        return jsonify({"success": False, "error": "Invalid plan for this activity."}), 400
+    
+    try:
+        # Initialize planner
+        planner = ActivityPlanner(activity_id)
+        
+        # Call Claude to analyze feedback
+        current_app.logger.info(f"Analyzing feedback for plan {plan_id} with Claude AI")
+        suggestion = planner.analyze_feedback_with_claude(plan_id)
+        
+        return jsonify({
+            "success": True,
+            "suggestion_id": suggestion.id
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error analyzing feedback: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@main_bp.route('/activity/<activity_id>/plan/<plan_id>/apply_ai_suggestions', methods=['POST'])
+@login_required
+def apply_ai_suggestions(activity_id, plan_id):
+    """Apply AI suggestions to create a new plan version."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the plan
+    plan = Plan.query.get_or_404(plan_id)
+    if plan.activity_id != activity_id:
+        flash("Invalid plan for this activity.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    # Get the suggestion ID from form
+    suggestion_id = request.form.get('suggestion_id')
+    if not suggestion_id:
+        flash("No suggestion ID provided.", "error")
+        return redirect(url_for('main.manage_feedback', activity_id=activity_id))
+    
+    try:
+        # Initialize planner
+        planner = ActivityPlanner(activity_id)
+        
+        # Apply the suggestions
+        current_app.logger.info(f"Applying AI suggestion {suggestion_id} to plan {plan_id}")
+        revised_plan = planner.apply_ai_suggestions(suggestion_id)
+        
+        flash("AI suggestions applied successfully!", "success")
+        return redirect(url_for('main.view_plan', activity_id=activity_id))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error applying AI suggestions: {str(e)}", exc_info=True)
+        flash(f"Error applying suggestions: {str(e)}", "error")
+        return redirect(url_for('main.manage_feedback', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/plan/<plan_id>/update_plan_manually', methods=['POST'])
+@login_required
+def update_plan_manually(activity_id, plan_id):
+    """Update a plan manually with provided data."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the plan
+    plan = Plan.query.get_or_404(plan_id)
+    if plan.activity_id != activity_id:
+        flash("Invalid plan for this activity.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    try:
+        # Initialize planner
+        planner = ActivityPlanner(activity_id)
+        
+        # Update the plan with form data
+        current_app.logger.info(f"Manually updating plan {plan_id}")
+        
+        # Process the form data
+        updated_data = {
+            'plan_title': request.form.get('plan_title'),
+            'plan_description': request.form.get('plan_description'),
+            'scheduled_date': request.form.get('scheduled_date'),
+            'start_time': request.form.get('start_time'),
+            'time_window': request.form.get('time_window'),
+            'location_address': request.form.get('location_address')
+        }
+        
+        # Update the plan
+        revised_plan = planner.update_plan_manually(plan_id, updated_data)
+        
+        flash("Plan updated successfully!", "success")
+        return redirect(url_for('main.view_plan', activity_id=activity_id))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error updating plan: {str(e)}", exc_info=True)
+        flash(f"Error updating plan: {str(e)}", "error")
+        return redirect(url_for('main.manage_feedback', activity_id=activity_id))
+
+@main_bp.route('/activity/<activity_id>/plan/<plan_id>/request_plan_approval', methods=['POST'])
+@login_required
+def request_plan_approval(activity_id, plan_id):
+    """Request approval from all participants for a plan."""
+    # Get the activity
+    activity = Activity.query.get_or_404(activity_id)
+    
+    # Verify activity belongs to current user
+    if activity.creator_id != current_user.id:
+        flash("You don't have permission to do that.", "error")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the plan
+    plan = Plan.query.get_or_404(plan_id)
+    if plan.activity_id != activity_id:
+        flash("Invalid plan for this activity.", "error")
+        return redirect(url_for('main.activity_detail', activity_id=activity_id))
+    
+    try:
+        # Initialize planner
+        planner = ActivityPlanner(activity_id)
+        
+        # Request approval
+        current_app.logger.info(f"Requesting approval for plan {plan_id}")
+        planner.request_plan_approval(plan_id)
+        
+        # Notify all participants about the approval request
+        participants = Participant.query.filter_by(activity_id=activity_id).all()
+        
+        for participant in participants:
+            # Skip participants without contact information
+            if not participant.email and not participant.phone_number:
+                continue
+            
+            # Send email notification if available
+            if participant.email:
+                try:
+                    email_service.send_email(
+                        participant.email,
+                        "The activity plan requires your approval",
+                        f"Hello {participant.name or 'Participant'},<br><br>The organizer of '{activity.title}' has updated the plan and would like your approval. Please check your email for details or visit the activity page to review and approve the plan."
+                    )
+                except Exception as e:
+                    current_app.logger.error(f"Failed to send approval email to {participant.email}: {str(e)}")
+            
+            # Send SMS notification if they opted in
+            if participant.allow_group_text and participant.phone_number:
+                try:
+                    sms_service.send_notification(
+                        participant.phone_number,
+                        "The activity plan has been updated and requires your approval. Check your email for details.",
+                        activity_id
+                    )
+                except Exception as e:
+                    current_app.logger.error(f"Failed to send approval SMS to {participant.phone_number}: {str(e)}")
+        
+        flash("Approval requests sent to all participants!", "success")
+        return redirect(url_for('main.view_plan', activity_id=activity_id))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error requesting plan approval: {str(e)}", exc_info=True)
+        flash(f"Error requesting approval: {str(e)}", "error")
+        return redirect(url_for('main.manage_feedback', activity_id=activity_id))

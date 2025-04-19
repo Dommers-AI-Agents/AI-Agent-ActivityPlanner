@@ -255,18 +255,10 @@ def planner_converse():
             'extracted_info': extracted_info
         }
         
-        # Add plan if activity is trip-like
+        # Add plan if available from Claude
         if result.get('plan'):
             response['plan'] = result['plan']
-        elif (len(input_text) > 100 and 
-              any(keyword in input_text.lower() for keyword in ['trip', 'itinerary', 'museum', 'schedule', 'plan', 'visit'])):
-            try:
-                # Create a plan from mock data
-                planner = ActivityPlanner()
-                mock_plan = claude_service._mock_generate_plan({})
-                response['plan'] = mock_plan
-            except Exception as e:
-                logger.error(f"Failed to generate plan: {str(e)}")
+        # Removed the mock museum plan injection that was overriding Claude's actual response
         
         logger.info(f"Final response: {response['message'][:100]}...")
         return jsonify(response)

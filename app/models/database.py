@@ -87,6 +87,10 @@ class Activity(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     title = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
+    proposed_date = db.Column(db.Date, nullable=True)
+    time_window = db.Column(db.String(100), nullable=True)
+    start_time = db.Column(db.String(10), nullable=True)  # Start time like "14:30"
+    location_address = db.Column(db.String(255), nullable=True)  # Address for the activity
     status = db.Column(db.String(50), default='planning', nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -124,6 +128,10 @@ class Activity(db.Model):
             'id': self.id,
             'title': self.title,
             'description': self.description,
+            'proposed_date': self.proposed_date.isoformat() if self.proposed_date else None,
+            'time_window': self.time_window,
+            'start_time': self.start_time,
+            'location_address': self.location_address,
             'status': self.status,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
@@ -179,6 +187,42 @@ class Preference(db.Model):
     # Relationships
     activity = db.relationship('Activity', back_populates='preferences')
     participant = db.relationship('Participant', back_populates='preferences')
+    
+    @staticmethod
+    def get_feedback_for_activity(activity_id):
+        """Get all feedback for an activity with participant details.
+        
+        Returns a list of dictionaries with participant info and feedback.
+        """
+        feedback_list = []
+        
+        # Get all feedback preferences
+        feedback_prefs = Preference.query.filter_by(
+            activity_id=activity_id, 
+            category='feedback',
+            key='plan_feedback'
+        ).all()
+        
+        # Process each feedback entry
+        for pref in feedback_prefs:
+            if not pref.value or not pref.value.strip():
+                continue
+                
+            # Get participant info
+            participant = Participant.query.get(pref.participant_id) if pref.participant_id else None
+            
+            # Create feedback entry
+            feedback_entry = {
+                'id': pref.id,
+                'participant_id': pref.participant_id,
+                'participant_name': participant.name if participant else 'Activity Creator',
+                'feedback': pref.value,
+                'created_at': pref.created_at.strftime('%Y-%m-%d %H:%M')
+            }
+            
+            feedback_list.append(feedback_entry)
+            
+        return feedback_list
     
     def __repr__(self):
         return f'<Preference {self.category}.{self.key}>'
@@ -240,6 +284,61 @@ class Message(db.Model):
             'created_at': self.created_at.isoformat(),
         }
 
+class PlanApproval(db.Model):
+    """Model for tracking participant approvals of plans."""
+    __tablename__ = 'plan_approvals'
+    
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    plan_id = db.Column(db.String(36), db.ForeignKey('plans.id'), nullable=False)
+    participant_id = db.Column(db.String(36), db.ForeignKey('participants.id'), nullable=False)
+    approved = db.Column(db.Boolean, default=False)
+    feedback = db.Column(db.Text, nullable=True)  # Optional feedback if not approved
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    participant = db.relationship('Participant', backref='approvals')
+    
+    def __repr__(self):
+        return f'<PlanApproval {self.id} - Approved: {self.approved}>'
+
+
+class AISuggestion(db.Model):
+    """Model for storing AI-generated suggestions for plan updates."""
+    __tablename__ = 'ai_suggestions'
+    
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    plan_id = db.Column(db.String(36), db.ForeignKey('plans.id'), nullable=False)
+    activity_id = db.Column(db.String(36), db.ForeignKey('activities.id'), nullable=False)
+    summary = db.Column(db.Text, nullable=False)  # Summary of the suggestions
+    changes = db.Column(db.Text, nullable=True)   # JSON string of specific changes
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<AISuggestion for Plan {self.plan_id}>'
+    
+    @property
+    def changes_list(self):
+        """Get changes as a list."""
+        if not self.changes:
+            return []
+        try:
+            return json.loads(self.changes)
+        except json.JSONDecodeError:
+            return []
+    
+    def to_dict(self):
+        """Convert suggestion to dictionary."""
+        return {
+            'id': self.id,
+            'plan_id': self.plan_id,
+            'activity_id': self.activity_id,
+            'summary': self.summary,
+            'changes': self.changes_list,
+            'created_at': self.created_at.isoformat(),
+        }
+
+
 class Plan(db.Model):
     """Generated plan model."""
     __tablename__ = 'plans'
@@ -248,8 +347,13 @@ class Plan(db.Model):
     activity_id = db.Column(db.String(36), db.ForeignKey('activities.id'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=False)
+    scheduled_date = db.Column(db.Date, nullable=True)  # Final chosen date
+    time_window = db.Column(db.String(100), nullable=True)  # Final chosen time window
+    start_time = db.Column(db.String(10), nullable=True)  # Specific start time
+    location_address = db.Column(db.String(255), nullable=True)  # Address for the activity
     schedule = db.Column(db.Text, nullable=True)  # JSON string for schedule data
     status = db.Column(db.String(50), default='draft', nullable=False)
+    requires_approval = db.Column(db.Boolean, default=False)  # If true, needs participant approval before finalizing
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -273,6 +377,10 @@ class Plan(db.Model):
             'activity_id': self.activity_id,
             'title': self.title,
             'description': self.description,
+            'scheduled_date': self.scheduled_date.isoformat() if self.scheduled_date else None,
+            'time_window': self.time_window,
+            'start_time': self.start_time,
+            'location_address': self.location_address,
             'schedule': self.schedule_dict,
             'status': self.status,
             'created_at': self.created_at.isoformat(),

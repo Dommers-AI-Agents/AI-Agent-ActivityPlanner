@@ -16,6 +16,39 @@
                     </span>
                 </div>
                 
+                <!-- Schedule information block -->
+                <div class="plan-schedule-info mb-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h5 class="card-title">Scheduled Time</h5>
+                            <div class="row mb-2">
+                                {% if plan.scheduled_date %}
+                                <div class="col-md-6">
+                                    <p><i class="far fa-calendar-alt"></i> <strong>Date:</strong> {{ plan.scheduled_date.strftime('%A, %B %d, %Y') }}</p>
+                                </div>
+                                {% endif %}
+                                {% if plan.time_window %}
+                                <div class="col-md-6">
+                                    <p><i class="far fa-clock"></i> <strong>Time Window:</strong> {{ plan.time_window }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="row">
+                                {% if plan.start_time %}
+                                <div class="col-md-6">
+                                    <p><i class="far fa-hourglass"></i> <strong>Start Time:</strong> {{ plan.start_time }}</p>
+                                </div>
+                                {% endif %}
+                                {% if plan.location_address %}
+                                <div class="col-md-6">
+                                    <p><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> {{ plan.location_address }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="plan-description">
                     {{ plan.description }}
                 </div>
@@ -52,6 +85,20 @@
                 <div class="alert alert-success mt-4">
                     <h5 class="alert-heading">Plan Finalized!</h5>
                     <p>This plan has been finalized and all participants have been notified.</p>
+                </div>
+                {% elif current_user.is_authenticated and current_user.id == activity.creator_id and plan.status != 'final' %}
+                <div class="alert alert-primary mt-4">
+                    <h5 class="alert-heading">Manage This Plan</h5>
+                    <p>As the creator, you can review feedback and update the plan.</p>
+                    
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('main.manage_feedback', activity_id=activity.id) }}" class="btn btn-primary">
+                            <i class="fas fa-comments"></i> Manage Feedback
+                        </a>
+                        <button id="finalize-plan-btn" class="btn btn-success">
+                            <i class="fas fa-check-circle"></i> Finalize Plan
+                        </button>
+                    </div>
                 </div>
                 {% elif participant and participant.status == 'complete' and plan.status != 'final' %}
                 <div class="alert alert-info mt-4">

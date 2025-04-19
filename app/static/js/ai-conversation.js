@@ -1,10 +1,79 @@
 // ai-conversation.js - Interactive AI conversation component
+
+// Debug flag - set to true to enable console logging
+const DEBUG = false;
+
+// Debug logging function
+function debugLog(message) {
+  if (DEBUG) {
+    console.log(message);
+  }
+}
 function initializeAIConversation(containerId, callbacks) {
   const container = document.getElementById(containerId);
   if (!container) return;
   
-  // Create our conversation interface
+  // Create our conversation interface with callbacks
   createConversationInterface(container, callbacks);
+  
+  // Set up a direct update interval to keep the description updated
+  const descriptionField = document.getElementById('activity_description');
+  
+  if (descriptionField) {
+    // Initial update
+    setTimeout(() => {
+      // If the description field is empty, force an initial update
+      if (!descriptionField.value.trim()) {
+        updateSummary();
+      }
+    }, 1000);
+    
+    // Set up event listener for the description field to detect external changes
+    descriptionField.addEventListener('focus', function() {
+      // When the field gets focus, remember its current value
+      descriptionField._lastValue = descriptionField.value;
+    });
+    
+    descriptionField.addEventListener('blur', function() {
+      // When the field loses focus, check if it was changed manually
+      if (descriptionField.value !== descriptionField._lastValue) {
+        console.log("Description field was manually edited, will not auto-update");
+        descriptionField._manuallyEdited = true;
+      }
+    });
+    
+    // Override the updateSummary function to respect manual edits
+    const originalUpdateSummary = window.updateSummary || updateSummary;
+    
+    window.updateSummary = function() {
+      // Only auto-update if the field hasn't been manually edited
+      if (!descriptionField._manuallyEdited) {
+        originalUpdateSummary();
+      } else {
+        console.log("Skipping auto-update because field was manually edited");
+        // Still update the other fields
+        if (callbacks && callbacks.onUpdateSummary) {
+          const activityType = extractActivityTypeFromHistory();
+          callbacks.onUpdateSummary(activityType || "Activity Plan");
+        }
+      }
+    };
+    
+    // Helper function to extract activity type from history
+    function extractActivityTypeFromHistory() {
+      if (!window.conversationHistory || !Array.isArray(window.conversationHistory)) {
+        return null;
+      }
+      
+      for (const msg of window.conversationHistory) {
+        if (msg.role === 'assistant' && msg.extracted_info && msg.extracted_info.activity_type) {
+          return msg.extracted_info.activity_type;
+        }
+      }
+      
+      return null;
+    }
+  }
 }
 
 function createConversationInterface(container, callbacks) {
@@ -75,8 +144,11 @@ function createConversationInterface(container, callbacks) {
   let conversationSummary = '';
   let activityType = '';
   let specialConsiderations = '';
-  // Keep track of the conversation history
-  let conversationHistory = [];
+  // Keep track of the conversation history - use window.conversationHistory that's initialized in create_activity.html
+  if (!window.conversationHistory) {
+    window.conversationHistory = [];
+  }
+  let conversationHistory = window.conversationHistory;
   
   // Hook up recognition events if available
   if (recognition) {
@@ -128,6 +200,18 @@ function createConversationInterface(container, callbacks) {
     
     // Add to conversation history 
     conversationHistory.push({role: 'user', content: message});
+    
+    // Process user message immediately for time window and start time extraction
+    try {
+      debugLog("Processing user message immediately for time/location extraction");
+      if (window.extractLocationAndTimeInfo && typeof window.extractLocationAndTimeInfo === 'function') {
+        window.extractLocationAndTimeInfo();
+      } else {
+        debugLog("extractLocationAndTimeInfo function not found in window scope");
+      }
+    } catch (e) {
+      console.error("Error calling extractLocationAndTimeInfo on user input:", e);
+    }
     
     // Stop recording if active
     if (isRecording && recognition) {
@@ -250,8 +334,20 @@ function createConversationInterface(container, callbacks) {
         }
       }
       
+      // Directly extract and update location and time info
+      try {
+        debugLog("Calling extractLocationAndTimeInfo directly after receiving assistant response");
+        if (window.extractLocationAndTimeInfo && typeof window.extractLocationAndTimeInfo === 'function') {
+          window.extractLocationAndTimeInfo();
+        } else {
+          debugLog("extractLocationAndTimeInfo function not found in window scope");
+        }
+      } catch (e) {
+        console.error("Error calling extractLocationAndTimeInfo:", e);
+      }
+      
       // Update conversation summary and activity description with the latest conversation history
-      console.log("Calling updateSummary immediately after processing the response");
+      debugLog("Calling updateSummary immediately after processing the response");
       updateSummary();
     } catch (error) {
       console.error('Error processing message:', error);
@@ -417,8 +513,9 @@ function createConversationInterface(container, callbacks) {
   }
 
   // Function to call the backend API
+  // Update the callBackendApi function to ensure the response is properly handled
   async function callBackendApi(activityId, message) {
-    // We'll try to use the conversation API endpoint if it exists
+    // We'll use the conversation API endpoint
     const url = `/api/ai/planner/converse`;
     
     console.log("Calling backend API with URL:", url);
@@ -445,61 +542,26 @@ function createConversationInterface(container, callbacks) {
     }
     
     // Get the response JSON
-    let data;
-    try {
-      data = await response.json();
-      console.log("API response data:", data);
-    } catch (e) {
-      console.error("Failed to parse API response as JSON:", e);
-      const text = await response.text();
-      return {
-        message: text,
-        extracted_info: {}
-      };
-    }
+    const data = await response.json();
+    console.log("API response data from Claude:", data);
     
-    // Check if we have a message field
-    if (data && data.message) {
-      // Check if the message itself is a JSON string
-      if (typeof data.message === 'string' && data.message.trim().startsWith('{')) {
-        try {
-          const parsedMsg = JSON.parse(data.message);
-          if (parsedMsg && parsedMsg.message) {
-            // Replace the message with the parsed inner message
-            data.message = parsedMsg.message;
-            
-            // Update extracted_info if available in the nested JSON
-            if (parsedMsg.extracted_info) {
-              data.extracted_info = parsedMsg.extracted_info;
-            }
-          }
-        } catch (e) {
-          console.error("Failed to parse nested JSON in message:", e);
-          // Keep the original message
-        }
-      }
-      
-      // Return the clean data
-      return {
-        message: data.message,
-        extracted_info: data.extracted_info || {},
-        plan: data.plan || null
-      };
-    } else if (data.error) {
-      throw new Error(data.error);
-    } else {
-      throw new Error('Invalid API response format');
-    }
+    // Important: Make sure we're returning the correct data from Claude
+    // without any modification or filtering
+    return {
+      message: data.message || "I've created a plan based on your input.",
+      extracted_info: data.extracted_info || {},
+      plan: data.plan || null,
+      success: data.success || true
+    };
   }
+
   
   // Function to update summary based on conversation
   function updateSummary() {
     console.log("Updating summary with conversation history:", conversationHistory);
     
-    // Create a structured itinerary based on extracted info
-    let activityItinerary = '';
-    
     // Extract relevant information from conversation history
+    let activityType = '';
     let location = '';
     let dateTime = '';
     let groupSize = '';
@@ -507,303 +569,82 @@ function createConversationInterface(container, callbacks) {
     let transportationInfo = '';
     let mealInfo = '';
     let budget = '';
-    let fullItinerary = null;
-    let planObject = null;
+    let specialConsiderations = '';
+    let lastAssistantMessage = null;
     
-    // First, extract information from ALL messages in the conversation history
-    console.log("Total messages in conversation history:", conversationHistory.length);
+    // Find the last assistant message
+    for (let i = conversationHistory.length - 1; i >= 0; i--) {
+      if (conversationHistory[i].role === 'assistant') {
+        lastAssistantMessage = conversationHistory[i];
+        break;
+      }
+    }
     
+    // If we don't have a last assistant message, we can't create a summary
+    if (!lastAssistantMessage) {
+      console.log("No assistant messages found in conversation history");
+      return;
+    }
+    
+    // Extract information from all messages to build the summary table
     for (let i = 0; i < conversationHistory.length; i++) {
       const msg = conversationHistory[i];
       
-      // Add detailed logging for debugging
-      console.log(`Examining message ${i}:`, {
-        role: msg.role,
-        contentPreview: msg.content ? msg.content.substring(0, 50) : 'No content',
-        hasExtractedInfo: !!msg.extracted_info,
-        hasPlan: !!msg.plan
-      });
-      
       // Only look at assistant messages with extracted_info
-      if (msg.role === 'assistant') {
-        // Check for a full plan object
-        if (msg.plan) {
-          console.log(`Found plan object in message ${i}:`, msg.plan);
-          planObject = msg.plan;
-        }
+      if (msg.role === 'assistant' && msg.extracted_info) {
+        const info = msg.extracted_info;
         
-        // Check for extracted info
-        if (msg.extracted_info) {
-          const info = msg.extracted_info;
-          console.log(`Message ${i} extracted info:`, info);
-          
-          // Update fields from this message's extracted info (only if not already set)
-          if (info.activity_type && info.activity_type !== "null") activityType = info.activity_type;
-          if (info.location && info.location !== "null") location = info.location;
-          if (info.timing && info.timing !== "null") dateTime = info.timing;
-          if (info.group_size && info.group_size !== "null") groupSize = info.group_size;
-          if (info.group_composition && info.group_composition !== "null") {
-            if (groupSize === '') groupSize = info.group_composition;
-            else if (!groupSize.includes(info.group_composition)) groupSize += ` (${info.group_composition})`;
-          }
-          if (info.duration && info.duration !== "null") duration = info.duration;
-          if (info.transportation && info.transportation !== "null") transportationInfo = info.transportation;
-          if (info.budget && info.budget !== "null") budget = info.budget;
-          if (info.special_requirements && info.special_requirements !== "null") specialConsiderations = info.special_requirements;
-          if (info.meals && info.meals !== "null") mealInfo = info.meals;
+        // Update fields from this message's extracted info (only if not already set)
+        if (info.activity_type && info.activity_type !== "null") activityType = info.activity_type;
+        if (info.location && info.location !== "null") location = info.location;
+        if (info.timing && info.timing !== "null") dateTime = info.timing;
+        if (info.group_size && info.group_size !== "null") groupSize = info.group_size;
+        if (info.group_composition && info.group_composition !== "null") {
+          if (groupSize === '') groupSize = info.group_composition;
+          else if (!groupSize.includes(info.group_composition)) groupSize += ` (${info.group_composition})`;
         }
-        
-        // Improved itinerary detection with multiple patterns
-        if (msg.content) {
-          // Log first part of content for debugging
-          console.log(`Message ${i} content preview:`, msg.content.substring(0, 100));
-          
-          // Check for various itinerary patterns
-          const hasScheduleFormat = (
-            (msg.content.includes("Schedule") || msg.content.includes("Itinerary")) &&
-            (msg.content.match(/\d{1,2}:\d{2}\s*(AM|PM)/i) || 
-             msg.content.match(/\d{1,2}\s*(AM|PM)/i) ||
-             msg.content.includes("Morning") || 
-             msg.content.includes("Afternoon") || 
-             msg.content.includes("Evening"))
-          );
-          
-          const hasTravelFormat = (
-            (msg.content.includes("Depart") || msg.content.includes("Arrive")) &&
-            msg.content.length > 150
-          );
-          
-          const hasTimelineFormat = (
-            msg.content.match(/\d{1,2}:\d{2}\s*(AM|PM)/) &&
-            (msg.content.includes("Activity") || 
-             msg.content.includes("Visit") || 
-             msg.content.includes("Tour") || 
-             msg.content.includes("Meal"))
-          );
-          
-          if (hasScheduleFormat || hasTravelFormat || hasTimelineFormat) {
-            console.log(`Found itinerary pattern in message ${i}`);
-            fullItinerary = msg.content;
-          }
-        }
+        if (info.duration && info.duration !== "null") duration = info.duration;
+        if (info.transportation && info.transportation !== "null") transportationInfo = info.transportation;
+        if (info.budget && info.budget !== "null") budget = info.budget;
+        if (info.special_requirements && info.special_requirements !== "null") specialConsiderations = info.special_requirements;
+        if (info.meals && info.meals !== "null") mealInfo = info.meals;
       }
     }
     
-    // If the most recent response has an itinerary structure, use that
-    if (conversationHistory.length > 0) {
-      const lastMessages = conversationHistory.filter(msg => msg.role === 'assistant');
-      if (lastMessages.length > 0) {
-        const lastMsg = lastMessages[lastMessages.length - 1];
-        
-        // If the last message content looks like a structured itinerary, use it
-        if (lastMsg.content && 
-            (lastMsg.content.includes("Schedule") || 
-             lastMsg.content.includes("Itinerary") || 
-             lastMsg.content.match(/\d+:\d+\s*(AM|PM)/i))) {
-          fullItinerary = lastMsg.content;
-        }
-      }
-    }
+    // Build the activity description with natural language from Claude's response
+    let activityItinerary = '';
     
-    // Choose the best way to format the activity information
-    // Priority: 1. Plan object, 2. Full itinerary text, 3. Extracted fields
-    
-    if (planObject) {
-      // 1. Use plan object if available
-      console.log("Using plan object for description:", planObject);
-      
-      // Title from plan or activity type
-      if (planObject.title) {
-        activityItinerary += `# ${planObject.title}\n\n`;
-      } else if (activityType) {
-        activityItinerary += `# ${activityType} Itinerary\n\n`;
-      } else {
-        activityItinerary += '# Group Activity Plan\n\n';
-      }
-      
-      // Description from plan
-      if (planObject.description) {
-        activityItinerary += `${planObject.description}\n\n`;
-      }
-      
-      // Schedule from plan
-      if (planObject.schedule && Array.isArray(planObject.schedule)) {
-        activityItinerary += "## Schedule\n\n";
-        planObject.schedule.forEach(item => {
-          activityItinerary += `**${item.time}** - ${item.activity}\n\n`;
-        });
-      }
-      
-      // Special considerations
-      if (planObject.considerations) {
-        activityItinerary += "## Special Considerations\n\n";
-        activityItinerary += `${planObject.considerations}\n\n`;
-      }
-      
-      // Alternative options
-      if (planObject.alternatives && Array.isArray(planObject.alternatives)) {
-        activityItinerary += "## Alternative Options\n\n";
-        planObject.alternatives.forEach((alt, index) => {
-          activityItinerary += `${index + 1}. ${alt}\n`;
-        });
-        activityItinerary += "\n";
-      }
-      
-    } else if (fullItinerary) {
-      // 2. Use full itinerary text if available
-      console.log("Using full itinerary text for description");
-      
-      // Title from activity type
-      if (activityType) {
-        activityItinerary += `# ${activityType} Itinerary\n\n`;
-      } else {
-        activityItinerary += '# Group Activity Plan\n\n';
-      }
-      
-      // Add basic info at the top
-      if (groupSize) {
-        activityItinerary += `**Group:** ${groupSize}\n\n`;
-      }
-      
-      if (location) {
-        activityItinerary += `**Location:** ${location}\n\n`;
-      }
-      
-      // Now add the schedule from the itinerary text
-      activityItinerary += "## Detailed Schedule\n\n";
-      
-      // Parse the itinerary into a formatted structure
-      const lines = fullItinerary.split("\n");
-      
-      // Different formatting approaches
-      let formattedLines = [];
-      
-      // Try to detect a time-based schedule pattern
-      const timePatternLines = lines.filter(line => 
-        (line.match(/\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)/i) || line.match(/^\d{1,2}\s*(?:AM|PM|am|pm)/i)) &&
-        (line.includes(" - ") || line.includes("–") || line.includes("—") || line.includes(":"))
-      );
-      
-      // Check for itinerary/schedule headers for sections
-      const hasScheduleHeaders = lines.some(line => 
-        line.match(/^schedule:?$/i) || 
-        line.match(/^itinerary:?$/i) ||
-        line.match(/^detailed schedule:?$/i) ||
-        line.match(/^timeline:?$/i)
-      );
-      
-      console.log(`Schedule pattern detection: ${timePatternLines.length} time-pattern lines found, hasScheduleHeaders: ${hasScheduleHeaders}`);
-      
-      // Enhanced formatting based on content patterns
-      if (timePatternLines.length >= 2 || hasScheduleHeaders) {
-        // Use the time-based pattern with improved formatting
-        let inScheduleSection = false;
-        
-        lines.forEach(line => {
-          const trimmed = line.trim();
-          if (trimmed.length === 0) {
-            // Only add line breaks between sections, not for every empty line
-            if (formattedLines.length > 0 && !formattedLines[formattedLines.length-1].endsWith("\n\n")) {
-              formattedLines.push("\n");
-            }
-            return;
-          }
-          
-          // Detect schedule section headers
-          if (trimmed.match(/^(?:schedule|itinerary|detailed schedule|timeline):?$/i)) {
-            formattedLines.push(`### ${trimmed}\n\n`);
-            inScheduleSection = true;
-            return;
-          }
-          
-          // Format time entries with bold
-          if (inScheduleSection || timePatternLines.length >= 2) {
-            // Check for time patterns with different formats
-            if (trimmed.match(/^\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)/i) || 
-                trimmed.match(/^\d{1,2}\s*(?:AM|PM|am|pm)/i)) {
-              // Time entry
-              formattedLines.push(`**${trimmed}**\n`);
-            } else if (trimmed.match(/^Day \d+/i) || trimmed.match(/^Morning/i) || trimmed.match(/^Afternoon/i) || trimmed.match(/^Evening/i)) {
-              // Day/time period header
-              formattedLines.push(`### ${trimmed}\n\n`);
-            } else {
-              formattedLines.push(`${trimmed}\n`);
-            }
-          } else {
-            // Regular paragraph text
-            formattedLines.push(`${trimmed}\n\n`);
-          }
-        });
-      } else {
-        // Just use the text as-is with paragraph breaks, but try to detect section headers
-        lines.forEach(line => {
-          const trimmed = line.trim();
-          if (trimmed.length === 0) return;
-          
-          // Check if line looks like a header
-          if (trimmed.match(/^[A-Z][A-Za-z\s]+:$/)) {
-            formattedLines.push(`### ${trimmed}\n\n`);
-          } else {
-            formattedLines.push(`${trimmed}\n\n`);
-          }
-        });
-      }
-      
-      activityItinerary += formattedLines.join("");
-      
+    // Add a title
+    if (activityType) {
+      activityItinerary += `# ${activityType.charAt(0).toUpperCase() + activityType.slice(1)} Activity\n\n`;
     } else {
-      // 3. Build from extracted fields
-      console.log("Building from extracted fields");
-      
-      if (activityType) {
-        activityItinerary += `# ${activityType} Itinerary\n\n`;
-      } else {
-        activityItinerary += '# Group Activity Plan\n\n';
-      }
-      
-      // Basic description
-      activityItinerary += "This is a draft activity plan based on your conversation with the AI assistant.\n\n";
-      
-      // Add all the extracted fields we have
-      if (groupSize) {
-        activityItinerary += `**Group Size:** ${groupSize}\n\n`;
-      }
-      
-      if (location) {
-        activityItinerary += `**Location:** ${location}\n\n`;
-      }
-      
-      if (dateTime) {
-        activityItinerary += `**Date/Time:** ${dateTime}\n\n`;
-      }
-      
-      if (duration) {
-        activityItinerary += `**Duration:** ${duration}\n\n`;
-      }
-      
-      if (transportationInfo) {
-        activityItinerary += `**Transportation:** ${transportationInfo}\n\n`;
-      }
-      
-      if (budget) {
-        activityItinerary += `**Budget:** ${budget}\n\n`;
-      }
-      
-      if (specialConsiderations) {
-        activityItinerary += `**Special Considerations:** ${specialConsiderations}\n\n`;
-      }
-      
-      if (mealInfo) {
-        activityItinerary += `**Meals:** ${mealInfo}\n\n`;
-      }
-      
-      // Add a note that this is a draft
-      activityItinerary += "\nThis itinerary will be updated as you continue planning with the AI assistant.\n";
+      activityItinerary += '# Group Activity Plan\n\n';
     }
+    
+    // Add Claude's natural language response as the main content
+    activityItinerary += `${lastAssistantMessage.content}\n\n`;
+    
+    // Add a simple table with key details
+    activityItinerary += "## Activity Summary\n\n";
+    
+    // Start the table
+    activityItinerary += "| Detail | Information |\n";
+    activityItinerary += "|--------|-------------|\n";
+    
+    // Add table rows for information we have
+    if (activityType) activityItinerary += `| Activity Type | ${activityType} |\n`;
+    if (location) activityItinerary += `| Location | ${location} |\n`;
+    if (dateTime) activityItinerary += `| Date/Time | ${dateTime} |\n`;
+    if (duration) activityItinerary += `| Duration | ${duration} |\n`;
+    if (groupSize) activityItinerary += `| Group | ${groupSize} |\n`;
+    if (transportationInfo) activityItinerary += `| Transportation | ${transportationInfo} |\n`;
+    if (budget) activityItinerary += `| Budget | ${budget} |\n`;
+    if (mealInfo) activityItinerary += `| Meals | ${mealInfo} |\n`;
+    if (specialConsiderations) activityItinerary += `| Special Considerations | ${specialConsiderations} |\n`;
     
     // Update the activity description field directly
     const descriptionField = document.getElementById('activity_description');
-    if (descriptionField) {
+    if (descriptionField && !descriptionField.dataset.manuallyEdited) {
       descriptionField.value = activityItinerary;
     }
     
@@ -814,6 +655,11 @@ function createConversationInterface(container, callbacks) {
     }
     
     console.log("Updated activity description:", activityItinerary);
+    
+    // After updating the summary, also call extractLocationAndTimeInfo to update other fields
+    if (window.extractLocationAndTimeInfo && typeof window.extractLocationAndTimeInfo === 'function') {
+      window.extractLocationAndTimeInfo();
+    }
   }
   
   // Fallback local processing function for when API is unavailable

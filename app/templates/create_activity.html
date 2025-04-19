@@ -39,6 +39,50 @@
                                         <label for="activity_name" class="form-label">Activity Name *</label>
                                         <input type="text" class="form-control" id="activity_name" name="activity_name" placeholder="Weekend Hike, Game Night, etc." required>
                                     </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="activity_date" class="form-label">Proposed Date *</label>
+                                            <input type="date" class="form-control" id="activity_date" name="activity_date" required>
+                                            <div class="form-text">Suggested date for the activity</div>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label for="activity_time_window" class="form-label">Time Window *</label>
+                                            <select class="form-select" id="activity_time_window" name="activity_time_window" required>
+                                                <option value="">Select a time window</option>
+                                                <option value="Morning (8am-12pm)">Morning (8am-12pm)</option>
+                                                <option value="Afternoon (12pm-5pm)">Afternoon (12pm-5pm)</option>
+                                                <option value="Evening (5pm-9pm)">Evening (5pm-9pm)</option>
+                                                <option value="Night (9pm-12am)">Night (9pm-12am)</option>
+                                                <option value="Full Day (9am-5pm)">Full Day (9am-5pm)</option>
+                                                <option value="Custom">Custom</option>
+                                            </select>
+                                            <div id="custom-time-container" class="mt-2" style="display: none;">
+                                                <div class="row">
+                                                    <div class="col-6">
+                                                        <input type="time" class="form-control" id="activity_time_start" name="activity_time_start" placeholder="Start time">
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <input type="time" class="form-control" id="activity_time_end" name="activity_time_end" placeholder="End time">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="activity_start_time" class="form-label">Specific Start Time *</label>
+                                            <input type="time" class="form-control" id="activity_start_time" name="activity_start_time" required>
+                                            <div class="form-text">Exact time the activity will begin</div>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label for="activity_location" class="form-label">Location Address *</label>
+                                            <input type="text" class="form-control" id="activity_location" name="activity_location" placeholder="Enter the full address" required>
+                                            <div class="form-text">Where the activity will take place</div>
+                                        </div>
+                                    </div>
+                                    
                                     <div class="mb-3">
                                         <label for="activity_description" class="form-label">Activity Description</label>
                                         <textarea class="form-control" id="activity_description" name="activity_description" rows="3" placeholder="Brief description of the activity"></textarea>
@@ -102,44 +146,847 @@
 <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
 <script src="{{ url_for('static', filename='js/ai-conversation.js') }}"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        /* 
-        // Add a test button to check our Claude API connection - Commented out but kept for future use
-        const testButton = document.createElement('button');
-        testButton.textContent = 'Test Claude API';
-        testButton.className = 'btn btn-sm btn-info mb-3';
-        testButton.onclick = function(e) {
-            e.preventDefault();
-            fetch('/api/ai/test-claude')
-                .then(res => res.json())
-                .then(data => {
-                    console.log('Claude API test response:', data);
-                    alert('Check console for Claude API test results');
-                })
-                .catch(err => {
-                    console.error('Error testing Claude API:', err);
-                    alert('Error testing Claude API. Check console for details.');
-                });
+    // Define the extractLocationAndTimeInfo function in the global scope first
+    // Function to add visual indication that field was filled by AI
+    function addAIIndicator(field) {
+        // Make sure not to add duplicates
+        const existingIndicator = field.parentNode.querySelector('.ai-indicator');
+        if (existingIndicator) return;
+        
+        // Add the indicator
+        const indicator = document.createElement('small');
+        indicator.className = 'text-primary ai-indicator ms-2';
+        indicator.style.position = 'absolute';
+        indicator.style.right = '30px';
+        indicator.style.top = '9px';
+        indicator.style.fontSize = '0.75rem';
+        indicator.style.opacity = '0.9';
+        indicator.style.pointerEvents = 'none';
+        indicator.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+        indicator.style.padding = '2px 8px';
+        indicator.style.borderRadius = '4px';
+        indicator.style.border = '1px solid rgba(13, 110, 253, 0.2)';
+        indicator.innerHTML = '<i class="fas fa-robot"></i> AI Suggested';
+        
+        // Add tooltip
+        const tooltip = document.createElement('div');
+        tooltip.className = 'ai-tooltip';
+        tooltip.style.display = 'none';
+        tooltip.style.position = 'absolute';
+        tooltip.style.backgroundColor = '#f8f9fa';
+        tooltip.style.border = '1px solid #dee2e6';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.padding = '8px';
+        tooltip.style.zIndex = '1000';
+        tooltip.style.boxShadow = '0 0.5rem 1rem rgba(0, 0, 0, 0.15)';
+        tooltip.style.maxWidth = '250px';
+        tooltip.style.right = '0';
+        tooltip.style.top = '100%';
+        tooltip.textContent = 'This value was suggested by the AI based on your conversation. Click to edit manually.';
+        
+        indicator.appendChild(tooltip);
+        
+        // Make sure the parent has position relative
+        if (window.getComputedStyle(field.parentNode).position === 'static') {
+            field.parentNode.style.position = 'relative';
+        }
+        
+        // Add hover logic
+        indicator.addEventListener('mouseenter', () => {
+            tooltip.style.display = 'block';
+        });
+        
+        indicator.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+        
+        // Add to DOM
+        field.parentNode.appendChild(indicator);
+        
+        // Add focus event to remove indicator
+        field.addEventListener('focus', function() {
+            if (indicator && indicator.parentNode) {
+                indicator.classList.add('fade-out');
+                setTimeout(() => {
+                    if (indicator.parentNode) {
+                        indicator.parentNode.removeChild(indicator);
+                    }
+                }, 500);
+            }
+        }, { once: true });
+        
+        // Add style for fade-out if not already there
+        if (!document.getElementById('ai-indicator-style')) {
+            const style = document.createElement('style');
+            style.id = 'ai-indicator-style';
+            style.textContent = `
+                .fade-out {
+                    opacity: 0;
+                    transition: opacity 0.5s ease-out;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        // Set fade transition for smooth appearance
+        indicator.style.opacity = '0';
+        indicator.style.transition = 'opacity 0.3s ease-in';
+        
+        // Trigger reflow
+        void indicator.offsetWidth;
+        
+        // Show indicator with fade in
+        indicator.style.opacity = '0.7';
+    }
+
+    // Function to extract location and time info from conversation history
+    // Defined globally so it can be called from ai-conversation.js
+    window.extractLocationAndTimeInfo = function() {
+        // Silence console logs by default
+        const DEBUG = false; // Set to true only during development
+        
+        const debugLog = function(message) {
+            if (DEBUG) {
+                console.log(message);
+            }
         };
         
-        // Add the test button to the page
-        const container = document.getElementById('ai-conversation-container');
-        if (container) {
-            container.parentNode.insertBefore(testButton, container);
+        debugLog('extractLocationAndTimeInfo called');
+        // Make sure we have a conversation history
+        if (!window.conversationHistory || !Array.isArray(window.conversationHistory)) {
+            debugLog('No conversation history found');
+            return;
         }
-        */
+        
+        // Fields we want to populate
+        const locationField = document.getElementById('activity_location');
+        const timeWindowSelect = document.getElementById('activity_time_window');
+        const startTimeField = document.getElementById('activity_start_time');
+        const dateField = document.getElementById('activity_date');
+        
+        // Look through conversation history for extracted_info
+        let location = '';
+        let timeWindow = '';
+        let startTime = '';
+        let proposedDate = '';
+        
+        debugLog('Extracting location and time info from conversation history...');
+        
+        // Check conversation history for information from Claude - scan all messages
+        for (const message of window.conversationHistory) {
+            debugLog(`Checking message: ${message.role} with ${message.extracted_info ? 'extracted info' : 'no extracted info'}`);
+            
+            if (message.role === 'assistant' && message.extracted_info) {
+                // Extract location information
+                if (message.extracted_info.location && message.extracted_info.location !== "null") {
+                    location = message.extracted_info.location;
+                    debugLog(`Found location: ${location}`);
+                }
+                
+                // Extract timing information from all possible fields
+                const extractTimeInfo = (info) => {
+                    if (!info) return;
+                    
+                    const timingInfo = info.toString();
+                    debugLog(`Analyzing timing info: ${timingInfo}`);
+                    
+                    // Parse timing info for time window
+                    if (timingInfo.toLowerCase().includes('morning')) {
+                        timeWindow = 'Morning (8am-12pm)';
+                    } else if (timingInfo.toLowerCase().includes('afternoon')) {
+                        timeWindow = 'Afternoon (12pm-5pm)';
+                    } else if (timingInfo.toLowerCase().includes('evening')) {
+                        timeWindow = 'Evening (5pm-9pm)';
+                    } else if (timingInfo.toLowerCase().includes('night')) {
+                        timeWindow = 'Night (9pm-12am)';
+                    } else if (timingInfo.toLowerCase().includes('full day') || timingInfo.toLowerCase().includes('all day')) {
+                        timeWindow = 'Full Day (9am-5pm)';
+                    }
+                    
+                    // Try to extract a specific time with more patterns
+                    const timePatterns = [
+                        /(\d{1,2}):(\d{2})\s*(am|pm)/i,              // 9:00 am
+                        /(\d{1,2})\s*(am|pm)/i,                      // 9 am
+                        /at\s+(\d{1,2}):(\d{2})\s*(am|pm)/i,         // at 9:00 am
+                        /at\s+(\d{1,2})\s*(am|pm)/i,                 // at 9 am
+                        /start.*?(\d{1,2}):(\d{2})\s*(am|pm)/i,      // start at 9:00 am
+                        /start.*?(\d{1,2})\s*(am|pm)/i,              // start at 9 am
+                        /begin.*?(\d{1,2}):(\d{2})\s*(am|pm)/i,      // begin at 9:00 am
+                        /begin.*?(\d{1,2})\s*(am|pm)/i,              // begin at 9 am
+                        /(\d{1,2}):(\d{2})/                          // 24-hour format like 14:30
+                    ];
+                    
+                    for (const pattern of timePatterns) {
+                        const timeMatch = timingInfo.match(pattern);
+                        if (timeMatch) {
+                            let hours = parseInt(timeMatch[1]);
+                            // Check if we have minutes or just hours
+                            const minutes = timeMatch.length > 3 ? timeMatch[2] : '00';
+                            const ampm = timeMatch.length > 2 ? (timeMatch[timeMatch.length > 3 ? 3 : 2] || '').toLowerCase() : '';
+                            
+                            // Convert to 24-hour format if AM/PM specified
+                            if (ampm === 'pm' && hours < 12) {
+                                hours += 12;
+                            } else if (ampm === 'am' && hours === 12) {
+                                hours = 0;
+                            }
+                            
+                            // Format as HH:MM
+                            startTime = `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                            console.log(`Found start time: ${startTime}`);
+                            break;
+                        }
+                    }
+                    
+                    // Try to extract a date with more patterns
+                    const datePatterns = [
+                        /(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/,        // MM/DD/YYYY or DD/MM/YYYY
+                        /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/,         // YYYY/MM/DD
+                        /(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i,  // January 1st, 2025
+                        /(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})/i,     // 1st January 2025
+                        /(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)/i      // 5th of December (current year assumed)
+                    ];
+                    
+                    for (const pattern of datePatterns) {
+                        const dateMatch = timingInfo.match(pattern);
+                        if (dateMatch) {
+                            // Different handling for different formats
+                            if (dateMatch[0].match(/^\d{4}[-\/]/)) {
+                                // YYYY/MM/DD format
+                                const year = dateMatch[1];
+                                const month = dateMatch[2].padStart(2, '0');
+                                const day = dateMatch[3].padStart(2, '0');
+                                proposedDate = `${year}-${month}-${day}`;
+                            } else if (dateMatch[0].match(/^\d{1,2}[-\/]\d{1,2}[-\/]/)) {
+                                // MM/DD/YYYY or DD/MM/YYYY format (assume MM/DD for simplicity)
+                                const month = dateMatch[1].padStart(2, '0');
+                                const day = dateMatch[2].padStart(2, '0');
+                                const year = dateMatch[3];
+                                proposedDate = `${year}-${month}-${day}`;
+                            } else {
+                                // Month name format
+                                const monthNames = {
+                                    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+                                    'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                                };
+                                
+                                let monthText, day, year;
+                                if (dateMatch[0].match(/^\d{1,2}(?:st|nd|rd|th)?/)) {
+                                    // 1st January 2025 format or 5th of December
+                                    day = dateMatch[1];
+                                    monthText = dateMatch[2].substring(0, 3).toLowerCase();
+                                    year = dateMatch[3] || new Date().getFullYear().toString();
+                                } else {
+                                    // January 1st, 2025 format
+                                    monthText = dateMatch[1].substring(0, 3).toLowerCase();
+                                    day = dateMatch[2];
+                                    year = dateMatch[3] || new Date().getFullYear().toString();
+                                }
+                                
+                                const month = monthNames[monthText] || '01';
+                                proposedDate = `${year}-${month}-${day.padStart(2, '0')}`;
+                            }
+                            
+                            console.log(`Found proposed date: ${proposedDate}`);
+                            break;
+                        }
+                    }
+                    
+                    // Check for day names to infer a date
+                    const today = new Date();
+                    const dayMap = {
+                        'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 
+                        'friday': 5, 'saturday': 6, 'sunday': 0,
+                        'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0
+                    };
+                    
+                    // Try to match day names
+                    for (const [day, dayNum] of Object.entries(dayMap)) {
+                        if (timingInfo.toLowerCase().includes(day)) {
+                            // Calculate days until the next occurrence of this day
+                            const currentDay = today.getDay();
+                            let daysUntil = (dayNum - currentDay + 7) % 7;
+                            
+                            // If it's 0, it means today, but we want the next occurrence
+                            if (daysUntil === 0) daysUntil = 7;
+                            
+                            // If we see "next" before the day name, add another week
+                            if (timingInfo.toLowerCase().match(new RegExp(`next\\s+${day}`, 'i'))) {
+                                daysUntil += 7;
+                            }
+                            
+                            // Create the future date
+                            const futureDate = new Date();
+                            futureDate.setDate(today.getDate() + daysUntil);
+                            
+                            // Format as YYYY-MM-DD
+                            const year = futureDate.getFullYear();
+                            const month = (futureDate.getMonth() + 1).toString().padStart(2, '0');
+                            const date = futureDate.getDate().toString().padStart(2, '0');
+                            proposedDate = `${year}-${month}-${date}`;
+                            
+                            console.log(`Found day name (${day}), proposed date: ${proposedDate}`);
+                            break;
+                        }
+                    }
+                    
+                    // Check for relative date terms
+                    if (timingInfo.match(/\b(tomorrow|next day)\b/i)) {
+                        const tomorrow = new Date();
+                        tomorrow.setDate(today.getDate() + 1);
+                        
+                        const year = tomorrow.getFullYear();
+                        const month = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+                        const date = tomorrow.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        console.log(`Found 'tomorrow', proposed date: ${proposedDate}`);
+                    } else if (timingInfo.match(/\bin (\d+) days?\b/i)) {
+                        // Match "in X days"
+                        const daysMatch = timingInfo.match(/\bin (\d+) days?\b/i);
+                        if (daysMatch) {
+                            const daysToAdd = parseInt(daysMatch[1]);
+                            const futureDate = new Date();
+                            futureDate.setDate(today.getDate() + daysToAdd);
+                            
+                            const year = futureDate.getFullYear();
+                            const month = (futureDate.getMonth() + 1).toString().padStart(2, '0');
+                            const date = futureDate.getDate().toString().padStart(2, '0');
+                            proposedDate = `${year}-${month}-${date}`;
+                            
+                            console.log(`Found 'in ${daysToAdd} days', proposed date: ${proposedDate}`);
+                        }
+                    } else if (timingInfo.match(/\bnext week\b/i)) {
+                        const nextWeek = new Date();
+                        nextWeek.setDate(today.getDate() + 7);
+                        
+                        const year = nextWeek.getFullYear();
+                        const month = (nextWeek.getMonth() + 1).toString().padStart(2, '0');
+                        const date = nextWeek.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        console.log(`Found 'next week', proposed date: ${proposedDate}`);
+                    } else if (timingInfo.match(/\bthis weekend\b/i)) {
+                        const weekend = new Date();
+                        // Calculate days until Saturday
+                        const currentDay = today.getDay();
+                        const daysUntilSaturday = (6 - currentDay + 7) % 7;
+                        weekend.setDate(today.getDate() + daysUntilSaturday);
+                        
+                        const year = weekend.getFullYear();
+                        const month = (weekend.getMonth() + 1).toString().padStart(2, '0');
+                        const date = weekend.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        console.log(`Found 'this weekend', proposed date: ${proposedDate}`);
+                    } else if (timingInfo.match(/\bnext weekend\b/i)) {
+                        const weekend = new Date();
+                        // Calculate days until next Saturday (this Saturday + 7 days)
+                        const currentDay = today.getDay();
+                        const daysUntilSaturday = (6 - currentDay + 7) % 7 + 7;
+                        weekend.setDate(today.getDate() + daysUntilSaturday);
+                        
+                        const year = weekend.getFullYear();
+                        const month = (weekend.getMonth() + 1).toString().padStart(2, '0');
+                        const date = weekend.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        console.log(`Found 'next weekend', proposed date: ${proposedDate}`);
+                    } else if (timingInfo.match(/\btoday\b/i)) {
+                        const year = today.getFullYear();
+                        const month = (today.getMonth() + 1).toString().padStart(2, '0');
+                        const date = today.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        console.log(`Found 'today', proposed date: ${proposedDate}`);
+                    }
+                };
+                
+                // Extract from different fields
+                if (message.extracted_info.timing) extractTimeInfo(message.extracted_info.timing);
+                if (message.extracted_info.specific_date) extractTimeInfo(message.extracted_info.specific_date);
+                if (message.extracted_info.preferred_day) extractTimeInfo(message.extracted_info.preferred_day);
+                if (message.extracted_info.preferred_time) extractTimeInfo(message.extracted_info.preferred_time);
+                if (message.extracted_info.date) extractTimeInfo(message.extracted_info.date);
+                if (message.extracted_info.time) extractTimeInfo(message.extracted_info.time);
+                if (message.extracted_info.start_time) extractTimeInfo(message.extracted_info.start_time);
+                
+                // Check direct address/location fields
+                if (!location) {
+                    if (message.extracted_info.specific_location) {
+                        location = message.extracted_info.specific_location;
+                        console.log(`Found specific location: ${location}`);
+                    } else if (message.extracted_info.address) {
+                        location = message.extracted_info.address;
+                        console.log(`Found address: ${location}`);
+                    } else if (message.extracted_info.venue) {
+                        location = message.extracted_info.venue;
+                        console.log(`Found venue: ${location}`);
+                    }
+                }
+            }
+            
+            // Check for plan objects in the message
+            if (message.role === 'assistant' && message.plan) {
+                const plan = message.plan;
+                console.log('Found plan object in message');
+                
+                // Extract location from plan
+                if (!location) {
+                    // Check different potential location fields
+                    if (plan.location) {
+                        location = plan.location;
+                        console.log(`Found location in plan: ${location}`);
+                    } else if (plan.location_address) {
+                        location = plan.location_address;
+                        console.log(`Found location_address in plan: ${location}`);
+                    } else if (plan.venue) {
+                        location = plan.venue;
+                        console.log(`Found venue in plan: ${location}`);
+                    } else if (plan.address) {
+                        location = plan.address;
+                        console.log(`Found address in plan: ${location}`);
+                    }
+                }
+                
+                // Extract time window from plan
+                if (!timeWindow && plan.time_window) {
+                    timeWindow = plan.time_window;
+                    console.log(`Found time_window in plan: ${timeWindow}`);
+                    
+                    // Standardize to our format if needed
+                    if (timeWindow.toLowerCase().includes('morning')) {
+                        timeWindow = 'Morning (8am-12pm)';
+                    } else if (timeWindow.toLowerCase().includes('afternoon')) {
+                        timeWindow = 'Afternoon (12pm-5pm)';
+                    } else if (timeWindow.toLowerCase().includes('evening')) {
+                        timeWindow = 'Evening (5pm-9pm)';
+                    } else if (timeWindow.toLowerCase().includes('night')) {
+                        timeWindow = 'Night (9pm-12am)';
+                    } else if (timeWindow.toLowerCase().includes('full day') || timeWindow.toLowerCase().includes('all day')) {
+                        timeWindow = 'Full Day (9am-5pm)';
+                    }
+                }
+                
+                // Extract start time from plan
+                if (!startTime && plan.start_time) {
+                    startTime = plan.start_time;
+                    console.log(`Found start_time in plan: ${startTime}`);
+                    
+                    // Convert to 24-hour format if needed
+                    if (startTime.includes('am') || startTime.includes('pm')) {
+                        const timeMatch = startTime.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+                        if (timeMatch) {
+                            let hours = parseInt(timeMatch[1]);
+                            const minutes = timeMatch[2];
+                            const ampm = timeMatch[3].toLowerCase();
+                            
+                            if (ampm === 'pm' && hours < 12) {
+                                hours += 12;
+                            } else if (ampm === 'am' && hours === 12) {
+                                hours = 0;
+                            }
+                            
+                            startTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+                        }
+                    }
+                }
+                
+                // Extract date from plan
+                if (!proposedDate && plan.scheduled_date) {
+                    proposedDate = plan.scheduled_date;
+                    console.log(`Found scheduled_date in plan: ${proposedDate}`);
+                    
+                    // Convert to YYYY-MM-DD if needed
+                    if (proposedDate.includes('/')) {
+                        const parts = proposedDate.split('/');
+                        if (parts.length === 3) {
+                            // Assume MM/DD/YYYY format
+                            proposedDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                        }
+                    }
+                } else if (!proposedDate && plan.date) {
+                    proposedDate = plan.date;
+                    console.log(`Found date in plan: ${proposedDate}`);
+                    
+                    // Try to parse various formats
+                    const dateExtractor = extractTimeInfo;
+                    dateExtractor(proposedDate);
+                }
+                
+                // Extract schedule information if we don't have a start time
+                if (!startTime && plan.schedule && Array.isArray(plan.schedule) && plan.schedule.length > 0) {
+                    // Use first schedule item for start time
+                    const firstItem = plan.schedule[0];
+                    if (firstItem.time) {
+                        console.log(`Found time in first schedule item: ${firstItem.time}`);
+                        const timeMatch = firstItem.time.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+                        if (timeMatch) {
+                            let hours = parseInt(timeMatch[1]);
+                            const minutes = timeMatch[2];
+                            const ampm = timeMatch[3].toLowerCase();
+                            
+                            // Convert to 24-hour format
+                            if (ampm === 'pm' && hours < 12) {
+                                hours += 12;
+                            } else if (ampm === 'am' && hours === 12) {
+                                hours = 0;
+                            }
+                            
+                            // Format as HH:MM
+                            startTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+                            console.log(`Parsed start time: ${startTime}`);
+                        }
+                    }
+                }
+            }
+            
+            // Also check for direct mentions in the assistant's message content
+            if (message.role === 'assistant' && message.content) {
+                const content = message.content;
+                
+                // Try to extract location if not found yet
+                if (!location) {
+                    const locationPatterns = [
+                        /location:?\s*(.+?)(?:\.|,|\n|$)/i,
+                        /address:?\s*(.+?)(?:\.|,|\n|$)/i,
+                        /venue:?\s*(.+?)(?:\.|,|\n|$)/i,
+                        /at\s+(.+?)(?:\.|,|\n|$)/i,
+                        /the activity will be at\s+(.+?)(?:\.|,|\n|$)/i
+                    ];
+                    
+                    for (const pattern of locationPatterns) {
+                        const match = content.match(pattern);
+                        if (match && match[1] && match[1].length > 5) { // Ensure it's a reasonable length
+                            location = match[1].trim();
+                            debugLog(`Found location in content: ${location}`);
+                            break;
+                        }
+                    }
+                }
+                
+                // Process message content for time and date - don't reference external functions
+                try {
+                    if (!startTime || !proposedDate || !timeWindow) {
+                        const timingInfo = content;
+                        
+                        // Parse timing info for time window
+                        if (!timeWindow) {
+                            if (timingInfo.toLowerCase().includes('morning')) {
+                                timeWindow = 'Morning (8am-12pm)';
+                            } else if (timingInfo.toLowerCase().includes('afternoon')) {
+                                timeWindow = 'Afternoon (12pm-5pm)';
+                            } else if (timingInfo.toLowerCase().includes('evening')) {
+                                timeWindow = 'Evening (5pm-9pm)';
+                            } else if (timingInfo.toLowerCase().includes('night')) {
+                                timeWindow = 'Night (9pm-12am)';
+                            } else if (timingInfo.toLowerCase().includes('full day') || timingInfo.toLowerCase().includes('all day')) {
+                                timeWindow = 'Full Day (9am-5pm)';
+                            }
+                        }
+                        
+                        // Look for time info
+                        if (!startTime) {
+                            const timePatterns = [
+                                /(\d{1,2}):(\d{2})\s*(am|pm)/i,              // 9:00 am
+                                /(\d{1,2})\s*(am|pm)/i,                      // 9 am
+                                /at\s+(\d{1,2}):(\d{2})\s*(am|pm)/i,         // at 9:00 am
+                                /at\s+(\d{1,2})\s*(am|pm)/i,                 // at 9 am
+                                /(\d{1,2}):(\d{2})/                          // 24-hour format like 14:30
+                            ];
+                            
+                            for (const pattern of timePatterns) {
+                                const timeMatch = timingInfo.match(pattern);
+                                if (timeMatch) {
+                                    let hours = parseInt(timeMatch[1]);
+                                    // Check if we have minutes or just hours
+                                    const minutes = timeMatch.length > 3 ? timeMatch[2] : '00';
+                                    const ampm = timeMatch.length > 2 ? (timeMatch[timeMatch.length > 3 ? 3 : 2] || '').toLowerCase() : '';
+                                    
+                                    // Convert to 24-hour format if AM/PM specified
+                                    if (ampm === 'pm' && hours < 12) {
+                                        hours += 12;
+                                    } else if (ampm === 'am' && hours === 12) {
+                                        hours = 0;
+                                    }
+                                    
+                                    // Format as HH:MM
+                                    startTime = `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                                    debugLog(`Found start time in message content: ${startTime}`);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Look for date information
+                        if (!proposedDate) {
+                            if (timingInfo.match(/\b(tomorrow|next day)\b/i)) {
+                                const today = new Date();
+                                const tomorrow = new Date();
+                                tomorrow.setDate(today.getDate() + 1);
+                                
+                                const year = tomorrow.getFullYear();
+                                const month = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+                                const date = tomorrow.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'tomorrow', proposed date: ${proposedDate}`);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error processing message content for time/date:", e);
+                }
+            }
+        }
+        
+        // Also directly check the user's input messages for time information
+        for (const message of window.conversationHistory) {
+            if (message.role === 'user') {
+                debugLog(`Checking user message: ${message.content}`);
+                const content = message.content.toLowerCase();
+                
+                // Check for morning/afternoon/evening mentions
+                if (!timeWindow) {
+                    if (content.includes('morning')) {
+                        timeWindow = 'Morning (8am-12pm)';
+                        debugLog(`Found morning in user message, setting time window: ${timeWindow}`);
+                    } else if (content.includes('afternoon')) {
+                        timeWindow = 'Afternoon (12pm-5pm)';
+                        debugLog(`Found afternoon in user message, setting time window: ${timeWindow}`);
+                    } else if (content.includes('evening')) {
+                        timeWindow = 'Evening (5pm-9pm)';
+                        debugLog(`Found evening in user message, setting time window: ${timeWindow}`);
+                    } else if (content.includes('night')) {
+                        timeWindow = 'Night (9pm-12am)';
+                        debugLog(`Found night in user message, setting time window: ${timeWindow}`);
+                    } else if (content.includes('full day') || content.includes('all day')) {
+                        timeWindow = 'Full Day (9am-5pm)';
+                        debugLog(`Found full day in user message, setting time window: ${timeWindow}`);
+                    }
+                }
+                
+                // Check for explicit time mentions
+                if (!startTime) {
+                    const timePatterns = [
+                        /(\d{1,2}):(\d{2})\s*(am|pm)/i,              // 9:00 am
+                        /(\d{1,2})\s*(am|pm)/i,                      // 9 am
+                        /at\s+(\d{1,2}):(\d{2})\s*(am|pm)/i,         // at 9:00 am
+                        /at\s+(\d{1,2})\s*(am|pm)/i,                 // at 9 am
+                        /(\d{1,2}):(\d{2})/,                          // 24-hour format like 14:30
+                        /\b(\d{1,2})\s*o.?clock\s*(am|pm|in the morning|in the afternoon|in the evening)/i  // 8 o'clock in the morning
+                    ];
+                    
+                    for (const pattern of timePatterns) {
+                        const timeMatch = content.match(pattern);
+                        if (timeMatch) {
+                            let hours = parseInt(timeMatch[1]);
+                            // Check if we have minutes or just hours
+                            const minutes = timeMatch.length > 3 ? timeMatch[2] : '00';
+                            const ampm = timeMatch.length > 2 ? (timeMatch[timeMatch.length > 3 ? 3 : 2] || '').toLowerCase() : '';
+                            
+                            // Convert to 24-hour format if AM/PM specified
+                            if (ampm === 'pm' && hours < 12) {
+                                hours += 12;
+                            } else if (ampm === 'am' && hours === 12) {
+                                hours = 0;
+                            }
+                            
+                            // Format as HH:MM
+                            startTime = `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                            debugLog(`Found start time in user message: ${startTime}`);
+                            break;
+                        }
+                    }
+                }
+                
+                // Check for tomorrow, next week, etc.
+                if (!proposedDate) {
+                    const today = new Date();
+                    
+                    if (content.includes('tomorrow')) {
+                        const tomorrow = new Date();
+                        tomorrow.setDate(today.getDate() + 1);
+                        
+                        const year = tomorrow.getFullYear();
+                        const month = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+                        const date = tomorrow.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        debugLog(`Found 'tomorrow' in user message, proposed date: ${proposedDate}`);
+                    } else if (content.includes('next week')) {
+                        const nextWeek = new Date();
+                        nextWeek.setDate(today.getDate() + 7);
+                        
+                        const year = nextWeek.getFullYear();
+                        const month = (nextWeek.getMonth() + 1).toString().padStart(2, '0');
+                        const date = nextWeek.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        debugLog(`Found 'next week' in user message, proposed date: ${proposedDate}`);
+                    } else if (content.includes('this weekend')) {
+                        const weekend = new Date();
+                        // Calculate days until Saturday
+                        const currentDay = today.getDay();
+                        const daysUntilSaturday = (6 - currentDay + 7) % 7;
+                        weekend.setDate(today.getDate() + daysUntilSaturday);
+                        
+                        const year = weekend.getFullYear();
+                        const month = (weekend.getMonth() + 1).toString().padStart(2, '0');
+                        const date = weekend.getDate().toString().padStart(2, '0');
+                        proposedDate = `${year}-${month}-${date}`;
+                        
+                        debugLog(`Found 'this weekend' in user message, proposed date: ${proposedDate}`);
+                    }
+                }
+            }
+        }
+        
+        debugLog('Extraction complete, found:');
+        debugLog(`Location: ${location}`);
+        debugLog(`Time Window: ${timeWindow}`);
+        debugLog(`Start Time: ${startTime}`);
+        debugLog(`Proposed Date: ${proposedDate}`);
+        
+        // Update fields with extracted information
+        // Only update if fields haven't been manually edited
+        // Add visual update effect function
+        function applyUpdateEffect(field) {
+            // Add temporary highlight class
+            field.classList.add('ai-updated-field');
+            
+            // Remove it after animation completes
+            setTimeout(() => {
+                field.classList.remove('ai-updated-field');
+            }, 1000);
+        }
+        
+        // Make sure we have the highlight style 
+        if (!document.getElementById('ai-highlight-style')) {
+            const style = document.createElement('style');
+            style.id = 'ai-highlight-style';
+            style.textContent = `
+                @keyframes highlightField {
+                    0% { background-color: rgba(13, 110, 253, 0.05); }
+                    50% { background-color: rgba(13, 110, 253, 0.2); }
+                    100% { background-color: transparent; }
+                }
+                
+                .ai-updated-field {
+                    animation: highlightField 1s ease-in-out;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        if (location && locationField && !locationField.dataset.manuallyEdited) {
+            const oldValue = locationField.value;
+            locationField.value = location;
+            locationField.dataset.aiPopulated = 'true';
+            // Add visual indication
+            addAIIndicator(locationField);
+            if (oldValue !== location) {
+                applyUpdateEffect(locationField);
+            }
+            debugLog('Updated location field');
+        }
+        
+        if (timeWindow && timeWindowSelect && !timeWindowSelect.dataset.manuallyEdited) {
+            const oldValue = timeWindowSelect.value;
+            timeWindowSelect.value = timeWindow;
+            timeWindowSelect.dataset.aiPopulated = 'true';
+            // Add visual indication
+            addAIIndicator(timeWindowSelect);
+            if (oldValue !== timeWindow) {
+                applyUpdateEffect(timeWindowSelect);
+            }
+            debugLog('Updated time window field');
+            
+            // Trigger change event to handle custom time window
+            const event = new Event('change');
+            timeWindowSelect.dispatchEvent(event);
+        }
+        
+        if (startTime && startTimeField && !startTimeField.dataset.manuallyEdited) {
+            const oldValue = startTimeField.value;
+            startTimeField.value = startTime;
+            startTimeField.dataset.aiPopulated = 'true';
+            // Add visual indication
+            addAIIndicator(startTimeField);
+            if (oldValue !== startTime) {
+                applyUpdateEffect(startTimeField);
+            }
+            debugLog('Updated start time field');
+        }
+        
+        if (proposedDate && dateField && !dateField.dataset.manuallyEdited) {
+            const oldValue = dateField.value;
+            dateField.value = proposedDate;
+            dateField.dataset.aiPopulated = 'true';
+            // Add visual indication
+            addAIIndicator(dateField);
+            if (oldValue !== proposedDate) {
+                applyUpdateEffect(dateField);
+            }
+            debugLog('Updated date field');
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle custom time window toggle
+        const timeWindowSelect = document.getElementById('activity_time_window');
+        const customTimeContainer = document.getElementById('custom-time-container');
+        
+        if (timeWindowSelect && customTimeContainer) {
+            timeWindowSelect.addEventListener('change', function() {
+                if (this.value === 'Custom') {
+                    customTimeContainer.style.display = 'block';
+                    document.getElementById('activity_time_start').required = true;
+                    document.getElementById('activity_time_end').required = true;
+                } else {
+                    customTimeContainer.style.display = 'none';
+                    document.getElementById('activity_time_start').required = false;
+                    document.getElementById('activity_time_end').required = false;
+                }
+            });
+        }
+        
+        // Set default date to tomorrow
+        const dateField = document.getElementById('activity_date');
+        if (dateField) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            dateField.value = tomorrow.toISOString().split('T')[0];
+        }
+        
+        // Set default start time (current time rounded to nearest 30 min)
+        const startTimeField = document.getElementById('activity_start_time');
+        if (startTimeField) {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes() >= 30 ? 30 : 0;
+            const formattedHours = hours.toString().padStart(2, '0');
+            const formattedMinutes = minutes.toString().padStart(2, '0');
+            startTimeField.value = `${formattedHours}:${formattedMinutes}`;
+        }
         
         // Initialize the AI conversation component
         if (document.getElementById('ai-conversation-container')) {
+            // Create a global conversationHistory array to store the conversation
+            window.conversationHistory = [];
+            
             initializeAIConversation('ai-conversation-container', {
                 onUpdateSummary: function(summary) {
                     document.getElementById('ai-conversation-summary').value = summary;
                     
-                    // Auto-fill activity description if it's empty
-                    const descriptionField = document.getElementById('activity_description');
-                    if (!descriptionField.value) {
-                        descriptionField.value = summary;
+                    // Auto-fill activity name if it's empty
+                    const nameField = document.getElementById('activity_name');
+                    if (!nameField.value && summary) {
+                        nameField.value = summary.charAt(0).toUpperCase() + summary.slice(1);
                     }
+                    
+                    // Extract information from conversation history to populate fields
+                    extractLocationAndTimeInfo();
                 },
                 onUpdateActivityType: function(type) {
                     document.getElementById('activity-type').value = type;
@@ -152,6 +999,642 @@
                 },
                 onUpdateConsiderations: function(considerations) {
                     document.getElementById('special-considerations').value = considerations;
+                }
+            });
+            
+            // Add an event listener to update description when focus changes
+            const descriptionField = document.getElementById('activity_description');
+            if (descriptionField) {
+                // When the field gains focus, store its original value
+                descriptionField.addEventListener('focus', function() {
+                    this.dataset.originalValue = this.value;
+                });
+                
+                // When the field loses focus, check if it was changed
+                descriptionField.addEventListener('blur', function() {
+                    if (this.value !== this.dataset.originalValue) {
+                        // Silent log
+                        // console.log('Description field was manually edited');
+                        this.dataset.manuallyEdited = 'true';
+                    }
+                });
+                
+                // Force an initial update after a short delay
+                setTimeout(function() {
+                    if (window.updateSummary && typeof window.updateSummary === 'function') {
+                        window.updateSummary();
+                    }
+                    
+                    // Also extract location and time info
+                    extractLocationAndTimeInfo();
+                }, 1000);
+                
+                // Set up periodic extraction of location and time info
+                setInterval(function() {
+                    // Call the global function to ensure cross-file accessibility
+                    if (window.extractLocationAndTimeInfo && typeof window.extractLocationAndTimeInfo === 'function') {
+                        window.extractLocationAndTimeInfo();
+                    }
+                }, 1000); // Check for new info every second for more responsive updates
+                
+                // Also perform initial extraction
+                if (window.extractLocationAndTimeInfo && typeof window.extractLocationAndTimeInfo === 'function') {
+                    window.extractLocationAndTimeInfo();
+                }
+            }
+            
+            // Add event listener for form submission
+            const activityForm = document.getElementById('activity-form');
+            if (activityForm) {
+                activityForm.addEventListener('submit', function(event) {
+                    // Ensure the description field is filled before submission
+                    const descriptionField = document.getElementById('activity_description');
+                    if (descriptionField && !descriptionField.value.trim()) {
+                        // Force one last summary update
+                        if (window.updateSummary && typeof window.updateSummary === 'function') {
+                            window.updateSummary();
+                        }
+                        
+                        // If still empty, generate a default description
+                        if (!descriptionField.value.trim()) {
+                            const activityName = document.getElementById('activity_name').value || 'Group Activity';
+                            descriptionField.value = `# ${activityName}\n\nThis activity was planned with the help of an AI assistant.`;
+                        }
+                    }
+                });
+            }
+            
+            // Function to extract location and time info from conversation history
+            // Make it available globally so it can be called from ai-conversation.js
+            window.extractLocationAndTimeInfo = function() {
+                // Make sure we have a conversation history
+                if (!window.conversationHistory || !Array.isArray(window.conversationHistory)) {
+                    return;
+                }
+                
+                // Fields we want to populate
+                const locationField = document.getElementById('activity_location');
+                const timeWindowSelect = document.getElementById('activity_time_window');
+                const startTimeField = document.getElementById('activity_start_time');
+                const dateField = document.getElementById('activity_date');
+                
+                // Look through conversation history for extracted_info
+                let location = '';
+                let timeWindow = '';
+                let startTime = '';
+                let proposedDate = '';
+                
+                console.log('Extracting location and time info from conversation history...');
+                
+                // Check conversation history for information from Claude - scan all messages
+                for (const message of window.conversationHistory) {
+                    console.log(`Checking message: ${message.role} with ${message.extracted_info ? 'extracted info' : 'no extracted info'}`);
+                    
+                    if (message.role === 'assistant' && message.extracted_info) {
+                        // Extract location information
+                        if (message.extracted_info.location && message.extracted_info.location !== "null") {
+                            location = message.extracted_info.location;
+                            console.log(`Found location: ${location}`);
+                        }
+                        
+                        // Extract timing information from all possible fields
+                        const extractTimeInfo = (info) => {
+                            if (!info) return;
+                            
+                            const timingInfo = info.toString();
+                            console.log(`Analyzing timing info: ${timingInfo}`);
+                            
+                            // Parse timing info for time window
+                            if (timingInfo.toLowerCase().includes('morning')) {
+                                timeWindow = 'Morning (8am-12pm)';
+                            } else if (timingInfo.toLowerCase().includes('afternoon')) {
+                                timeWindow = 'Afternoon (12pm-5pm)';
+                            } else if (timingInfo.toLowerCase().includes('evening')) {
+                                timeWindow = 'Evening (5pm-9pm)';
+                            } else if (timingInfo.toLowerCase().includes('night')) {
+                                timeWindow = 'Night (9pm-12am)';
+                            } else if (timingInfo.toLowerCase().includes('full day') || timingInfo.toLowerCase().includes('all day')) {
+                                timeWindow = 'Full Day (9am-5pm)';
+                            }
+                            
+                            // Try to extract a specific time with more patterns
+                            const timePatterns = [
+                                /(\d{1,2}):(\d{2})\s*(am|pm)/i,              // 9:00 am
+                                /(\d{1,2})\s*(am|pm)/i,                      // 9 am
+                                /at\s+(\d{1,2}):(\d{2})\s*(am|pm)/i,         // at 9:00 am
+                                /at\s+(\d{1,2})\s*(am|pm)/i,                 // at 9 am
+                                /start.*?(\d{1,2}):(\d{2})\s*(am|pm)/i,      // start at 9:00 am
+                                /start.*?(\d{1,2})\s*(am|pm)/i,              // start at 9 am
+                                /begin.*?(\d{1,2}):(\d{2})\s*(am|pm)/i,      // begin at 9:00 am
+                                /begin.*?(\d{1,2})\s*(am|pm)/i,              // begin at 9 am
+                                /(\d{1,2}):(\d{2})/                          // 24-hour format like 14:30
+                            ];
+                            
+                            for (const pattern of timePatterns) {
+                                const timeMatch = timingInfo.match(pattern);
+                                if (timeMatch) {
+                                    let hours = parseInt(timeMatch[1]);
+                                    // Check if we have minutes or just hours
+                                    const minutes = timeMatch.length > 3 ? timeMatch[2] : '00';
+                                    const ampm = timeMatch.length > 2 ? (timeMatch[timeMatch.length > 3 ? 3 : 2] || '').toLowerCase() : '';
+                                    
+                                    // Convert to 24-hour format if AM/PM specified
+                                    if (ampm === 'pm' && hours < 12) {
+                                        hours += 12;
+                                    } else if (ampm === 'am' && hours === 12) {
+                                        hours = 0;
+                                    }
+                                    
+                                    // Format as HH:MM
+                                    startTime = `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                                    debugLog(`Found start time: ${startTime}`);
+                                    break;
+                                }
+                            }
+                            
+                            // Try to extract a date with more patterns
+                            const datePatterns = [
+                                /(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/,        // MM/DD/YYYY or DD/MM/YYYY
+                                /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/,         // YYYY/MM/DD
+                                /(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i,  // January 1st, 2025
+                                /(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})/i,     // 1st January 2025
+                                /(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)/i      // 5th of December (current year assumed)
+                            ];
+                            
+                            for (const pattern of datePatterns) {
+                                const dateMatch = timingInfo.match(pattern);
+                                if (dateMatch) {
+                                    // Different handling for different formats
+                                    if (dateMatch[0].match(/^\d{4}[-\/]/)) {
+                                        // YYYY/MM/DD format
+                                        const year = dateMatch[1];
+                                        const month = dateMatch[2].padStart(2, '0');
+                                        const day = dateMatch[3].padStart(2, '0');
+                                        proposedDate = `${year}-${month}-${day}`;
+                                    } else if (dateMatch[0].match(/^\d{1,2}[-\/]\d{1,2}[-\/]/)) {
+                                        // MM/DD/YYYY or DD/MM/YYYY format (assume MM/DD for simplicity)
+                                        const month = dateMatch[1].padStart(2, '0');
+                                        const day = dateMatch[2].padStart(2, '0');
+                                        const year = dateMatch[3];
+                                        proposedDate = `${year}-${month}-${day}`;
+                                    } else {
+                                        // Month name format
+                                        const monthNames = {
+                                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+                                            'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                                        };
+                                        
+                                        let monthText, day, year;
+                                        if (dateMatch[0].match(/^\d{1,2}(?:st|nd|rd|th)?/)) {
+                                            // 1st January 2025 format or 5th of December
+                                            day = dateMatch[1];
+                                            monthText = dateMatch[2].substring(0, 3).toLowerCase();
+                                            year = dateMatch[3] || new Date().getFullYear().toString();
+                                        } else {
+                                            // January 1st, 2025 format
+                                            monthText = dateMatch[1].substring(0, 3).toLowerCase();
+                                            day = dateMatch[2];
+                                            year = dateMatch[3] || new Date().getFullYear().toString();
+                                        }
+                                        
+                                        const month = monthNames[monthText] || '01';
+                                        proposedDate = `${year}-${month}-${day.padStart(2, '0')}`;
+                                    }
+                                    
+                                    debugLog(`Found proposed date: ${proposedDate}`);
+                                    break;
+                                }
+                            }
+                            
+                            // Check for day names to infer a date
+                            const today = new Date();
+                            const dayMap = {
+                                'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 
+                                'friday': 5, 'saturday': 6, 'sunday': 0,
+                                'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0
+                            };
+                            
+                            // Try to match day names
+                            for (const [day, dayNum] of Object.entries(dayMap)) {
+                                if (timingInfo.toLowerCase().includes(day)) {
+                                    // Calculate days until the next occurrence of this day
+                                    const currentDay = today.getDay();
+                                    let daysUntil = (dayNum - currentDay + 7) % 7;
+                                    
+                                    // If it's 0, it means today, but we want the next occurrence
+                                    if (daysUntil === 0) daysUntil = 7;
+                                    
+                                    // If we see "next" before the day name, add another week
+                                    if (timingInfo.toLowerCase().match(new RegExp(`next\\s+${day}`, 'i'))) {
+                                        daysUntil += 7;
+                                    }
+                                    
+                                    // Create the future date
+                                    const futureDate = new Date();
+                                    futureDate.setDate(today.getDate() + daysUntil);
+                                    
+                                    // Format as YYYY-MM-DD
+                                    const year = futureDate.getFullYear();
+                                    const month = (futureDate.getMonth() + 1).toString().padStart(2, '0');
+                                    const date = futureDate.getDate().toString().padStart(2, '0');
+                                    proposedDate = `${year}-${month}-${date}`;
+                                    
+                                    debugLog(`Found day name (${day}), proposed date: ${proposedDate}`);
+                                    break;
+                                }
+                            }
+                            
+                            // Check for relative date terms
+                            if (timingInfo.match(/\b(tomorrow|next day)\b/i)) {
+                                const tomorrow = new Date();
+                                tomorrow.setDate(today.getDate() + 1);
+                                
+                                const year = tomorrow.getFullYear();
+                                const month = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+                                const date = tomorrow.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'tomorrow', proposed date: ${proposedDate}`);
+                            } else if (timingInfo.match(/\bin (\d+) days?\b/i)) {
+                                // Match "in X days"
+                                const daysMatch = timingInfo.match(/\bin (\d+) days?\b/i);
+                                if (daysMatch) {
+                                    const daysToAdd = parseInt(daysMatch[1]);
+                                    const futureDate = new Date();
+                                    futureDate.setDate(today.getDate() + daysToAdd);
+                                    
+                                    const year = futureDate.getFullYear();
+                                    const month = (futureDate.getMonth() + 1).toString().padStart(2, '0');
+                                    const date = futureDate.getDate().toString().padStart(2, '0');
+                                    proposedDate = `${year}-${month}-${date}`;
+                                    
+                                    debugLog(`Found 'in ${daysToAdd} days', proposed date: ${proposedDate}`);
+                                }
+                            } else if (timingInfo.match(/\bnext week\b/i)) {
+                                const nextWeek = new Date();
+                                nextWeek.setDate(today.getDate() + 7);
+                                
+                                const year = nextWeek.getFullYear();
+                                const month = (nextWeek.getMonth() + 1).toString().padStart(2, '0');
+                                const date = nextWeek.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'next week', proposed date: ${proposedDate}`);
+                            } else if (timingInfo.match(/\bthis weekend\b/i)) {
+                                const weekend = new Date();
+                                // Calculate days until Saturday
+                                const currentDay = today.getDay();
+                                const daysUntilSaturday = (6 - currentDay + 7) % 7;
+                                weekend.setDate(today.getDate() + daysUntilSaturday);
+                                
+                                const year = weekend.getFullYear();
+                                const month = (weekend.getMonth() + 1).toString().padStart(2, '0');
+                                const date = weekend.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'this weekend', proposed date: ${proposedDate}`);
+                            } else if (timingInfo.match(/\bnext weekend\b/i)) {
+                                const weekend = new Date();
+                                // Calculate days until next Saturday (this Saturday + 7 days)
+                                const currentDay = today.getDay();
+                                const daysUntilSaturday = (6 - currentDay + 7) % 7 + 7;
+                                weekend.setDate(today.getDate() + daysUntilSaturday);
+                                
+                                const year = weekend.getFullYear();
+                                const month = (weekend.getMonth() + 1).toString().padStart(2, '0');
+                                const date = weekend.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'next weekend', proposed date: ${proposedDate}`);
+                            } else if (timingInfo.match(/\btoday\b/i)) {
+                                const year = today.getFullYear();
+                                const month = (today.getMonth() + 1).toString().padStart(2, '0');
+                                const date = today.getDate().toString().padStart(2, '0');
+                                proposedDate = `${year}-${month}-${date}`;
+                                
+                                debugLog(`Found 'today', proposed date: ${proposedDate}`);
+                            }
+                        };
+                        
+                        // Extract from different fields
+                        if (message.extracted_info.timing) extractTimeInfo(message.extracted_info.timing);
+                        if (message.extracted_info.specific_date) extractTimeInfo(message.extracted_info.specific_date);
+                        if (message.extracted_info.preferred_day) extractTimeInfo(message.extracted_info.preferred_day);
+                        if (message.extracted_info.preferred_time) extractTimeInfo(message.extracted_info.preferred_time);
+                        if (message.extracted_info.date) extractTimeInfo(message.extracted_info.date);
+                        if (message.extracted_info.time) extractTimeInfo(message.extracted_info.time);
+                        if (message.extracted_info.start_time) extractTimeInfo(message.extracted_info.start_time);
+                        
+                        // Check direct address/location fields
+                        if (!location) {
+                            if (message.extracted_info.specific_location) {
+                                location = message.extracted_info.specific_location;
+                                debugLog(`Found specific location: ${location}`);
+                            } else if (message.extracted_info.address) {
+                                location = message.extracted_info.address;
+                                debugLog(`Found address: ${location}`);
+                            } else if (message.extracted_info.venue) {
+                                location = message.extracted_info.venue;
+                                debugLog(`Found venue: ${location}`);
+                            }
+                        }
+                    }
+                    
+                    // Check for plan objects in the message
+                    if (message.role === 'assistant' && message.plan) {
+                        const plan = message.plan;
+                        debugLog('Found plan object in message');
+                        
+                        // Extract location from plan
+                        if (!location) {
+                            // Check different potential location fields
+                            if (plan.location) {
+                                location = plan.location;
+                                debugLog(`Found location in plan: ${location}`);
+                            } else if (plan.location_address) {
+                                location = plan.location_address;
+                                debugLog(`Found location_address in plan: ${location}`);
+                            } else if (plan.venue) {
+                                location = plan.venue;
+                                debugLog(`Found venue in plan: ${location}`);
+                            } else if (plan.address) {
+                                location = plan.address;
+                                debugLog(`Found address in plan: ${location}`);
+                            }
+                        }
+                        
+                        // Extract time window from plan
+                        if (!timeWindow && plan.time_window) {
+                            timeWindow = plan.time_window;
+                            debugLog(`Found time_window in plan: ${timeWindow}`);
+                            
+                            // Standardize to our format if needed
+                            if (timeWindow.toLowerCase().includes('morning')) {
+                                timeWindow = 'Morning (8am-12pm)';
+                            } else if (timeWindow.toLowerCase().includes('afternoon')) {
+                                timeWindow = 'Afternoon (12pm-5pm)';
+                            } else if (timeWindow.toLowerCase().includes('evening')) {
+                                timeWindow = 'Evening (5pm-9pm)';
+                            } else if (timeWindow.toLowerCase().includes('night')) {
+                                timeWindow = 'Night (9pm-12am)';
+                            } else if (timeWindow.toLowerCase().includes('full day') || timeWindow.toLowerCase().includes('all day')) {
+                                timeWindow = 'Full Day (9am-5pm)';
+                            }
+                        }
+                        
+                        // Extract start time from plan
+                        if (!startTime && plan.start_time) {
+                            startTime = plan.start_time;
+                            debugLog(`Found start_time in plan: ${startTime}`);
+                            
+                            // Convert to 24-hour format if needed
+                            if (startTime.includes('am') || startTime.includes('pm')) {
+                                const timeMatch = startTime.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+                                if (timeMatch) {
+                                    let hours = parseInt(timeMatch[1]);
+                                    const minutes = timeMatch[2];
+                                    const ampm = timeMatch[3].toLowerCase();
+                                    
+                                    if (ampm === 'pm' && hours < 12) {
+                                        hours += 12;
+                                    } else if (ampm === 'am' && hours === 12) {
+                                        hours = 0;
+                                    }
+                                    
+                                    startTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+                                }
+                            }
+                        }
+                        
+                        // Extract date from plan
+                        if (!proposedDate && plan.scheduled_date) {
+                            proposedDate = plan.scheduled_date;
+                            debugLog(`Found scheduled_date in plan: ${proposedDate}`);
+                            
+                            // Convert to YYYY-MM-DD if needed
+                            if (proposedDate.includes('/')) {
+                                const parts = proposedDate.split('/');
+                                if (parts.length === 3) {
+                                    // Assume MM/DD/YYYY format
+                                    proposedDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                                }
+                            }
+                        } else if (!proposedDate && plan.date) {
+                            proposedDate = plan.date;
+                            debugLog(`Found date in plan: ${proposedDate}`);
+                            
+                            // Try to parse various formats
+                            const dateExtractor = extractTimeInfo;
+                            dateExtractor(proposedDate);
+                        }
+                        
+                        // Extract schedule information if we don't have a start time
+                        if (!startTime && plan.schedule && Array.isArray(plan.schedule) && plan.schedule.length > 0) {
+                            // Use first schedule item for start time
+                            const firstItem = plan.schedule[0];
+                            if (firstItem.time) {
+                                debugLog(`Found time in first schedule item: ${firstItem.time}`);
+                                const timeMatch = firstItem.time.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+                                if (timeMatch) {
+                                    let hours = parseInt(timeMatch[1]);
+                                    const minutes = timeMatch[2];
+                                    const ampm = timeMatch[3].toLowerCase();
+                                    
+                                    // Convert to 24-hour format
+                                    if (ampm === 'pm' && hours < 12) {
+                                        hours += 12;
+                                    } else if (ampm === 'am' && hours === 12) {
+                                        hours = 0;
+                                    }
+                                    
+                                    // Format as HH:MM
+                                    startTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+                                    debugLog(`Parsed start time: ${startTime}`);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Also check for direct mentions in the assistant's message content
+                    if (message.role === 'assistant' && message.content) {
+                        const content = message.content;
+                        
+                        // Try to extract location if not found yet
+                        if (!location) {
+                            const locationPatterns = [
+                                /location:?\s*(.+?)(?:\.|,|\n|$)/i,
+                                /address:?\s*(.+?)(?:\.|,|\n|$)/i,
+                                /venue:?\s*(.+?)(?:\.|,|\n|$)/i,
+                                /at\s+(.+?)(?:\.|,|\n|$)/i,
+                                /the activity will be at\s+(.+?)(?:\.|,|\n|$)/i
+                            ];
+                            
+                            for (const pattern of locationPatterns) {
+                                const match = content.match(pattern);
+                                if (match && match[1] && match[1].length > 5) { // Ensure it's a reasonable length
+                                    location = match[1].trim();
+                                    debugLog(`Found location in content: ${location}`);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Use extractTimeInfo for time and date extraction
+                        if (!startTime || !proposedDate || !timeWindow) {
+                            extractTimeInfo(content);
+                        }
+                    }
+                }
+                
+                console.log('Extraction complete, found:');
+                console.log(`Location: ${location}`);
+                console.log(`Time Window: ${timeWindow}`);
+                console.log(`Start Time: ${startTime}`);
+                console.log(`Proposed Date: ${proposedDate}`);
+                
+                // Update fields with extracted information
+                // Only update if fields haven't been manually edited
+                if (location && locationField && !locationField.dataset.manuallyEdited) {
+                    locationField.value = location;
+                    locationField.dataset.aiPopulated = 'true';
+                    // Add visual indication
+                    addAIIndicator(locationField);
+                    debugLog('Updated location field');
+                }
+                
+                if (timeWindow && timeWindowSelect && !timeWindowSelect.dataset.manuallyEdited) {
+                    timeWindowSelect.value = timeWindow;
+                    timeWindowSelect.dataset.aiPopulated = 'true';
+                    // Add visual indication
+                    addAIIndicator(timeWindowSelect);
+                    debugLog('Updated time window field');
+                    
+                    // Trigger change event to handle custom time window
+                    const event = new Event('change');
+                    timeWindowSelect.dispatchEvent(event);
+                }
+                
+                if (startTime && startTimeField && !startTimeField.dataset.manuallyEdited) {
+                    startTimeField.value = startTime;
+                    startTimeField.dataset.aiPopulated = 'true';
+                    // Add visual indication
+                    addAIIndicator(startTimeField);
+                    debugLog('Updated start time field');
+                }
+                
+                if (proposedDate && dateField && !dateField.dataset.manuallyEdited) {
+                    dateField.value = proposedDate;
+                    dateField.dataset.aiPopulated = 'true';
+                    // Add visual indication
+                    addAIIndicator(dateField);
+                    debugLog('Updated date field');
+                }
+            }
+            
+            // Function to add visual indication that field was filled by AI
+            function addAIIndicator(field) {
+                // Make sure not to add duplicates
+                const existingIndicator = field.parentNode.querySelector('.ai-indicator');
+                if (existingIndicator) return;
+                
+                // Add the indicator
+                const indicator = document.createElement('small');
+                indicator.className = 'text-primary ai-indicator ms-2';
+                indicator.style.position = 'absolute';
+                indicator.style.right = '30px';
+                indicator.style.top = '9px';
+                indicator.style.fontSize = '0.75rem';
+                indicator.style.opacity = '0.7';
+                indicator.style.pointerEvents = 'none';
+                indicator.innerHTML = '<i class="fas fa-robot"></i> AI Suggested';
+                
+                // Add tooltip
+                const tooltip = document.createElement('div');
+                tooltip.className = 'ai-tooltip';
+                tooltip.style.display = 'none';
+                tooltip.style.position = 'absolute';
+                tooltip.style.backgroundColor = '#f8f9fa';
+                tooltip.style.border = '1px solid #dee2e6';
+                tooltip.style.borderRadius = '4px';
+                tooltip.style.padding = '8px';
+                tooltip.style.zIndex = '1000';
+                tooltip.style.boxShadow = '0 0.5rem 1rem rgba(0, 0, 0, 0.15)';
+                tooltip.style.maxWidth = '250px';
+                tooltip.style.right = '0';
+                tooltip.style.top = '100%';
+                tooltip.textContent = 'This value was suggested by the AI based on your conversation. Click to edit manually.';
+                
+                indicator.appendChild(tooltip);
+                
+                // Make sure the parent has position relative
+                if (window.getComputedStyle(field.parentNode).position === 'static') {
+                    field.parentNode.style.position = 'relative';
+                }
+                
+                // Add hover logic
+                indicator.addEventListener('mouseenter', () => {
+                    tooltip.style.display = 'block';
+                });
+                
+                indicator.addEventListener('mouseleave', () => {
+                    tooltip.style.display = 'none';
+                });
+                
+                // Add to DOM
+                field.parentNode.appendChild(indicator);
+                
+                // Add focus event to remove indicator
+                field.addEventListener('focus', function() {
+                    if (indicator && indicator.parentNode) {
+                        indicator.classList.add('fade-out');
+                        setTimeout(() => {
+                            if (indicator.parentNode) {
+                                indicator.parentNode.removeChild(indicator);
+                            }
+                        }, 500);
+                    }
+                }, { once: true });
+                
+                // Add style for fade-out if not already there
+                if (!document.getElementById('ai-indicator-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'ai-indicator-style';
+                    style.textContent = `
+                        .fade-out {
+                            opacity: 0;
+                            transition: opacity 0.5s ease-out;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+                
+                // Set fade transition for smooth appearance
+                indicator.style.opacity = '0';
+                indicator.style.transition = 'opacity 0.3s ease-in';
+                
+                // Trigger reflow
+                void indicator.offsetWidth;
+                
+                // Show indicator with fade in
+                indicator.style.opacity = '0.7';
+            }
+            
+            // Add event listeners to track if fields are manually edited
+            const fieldsToTrack = ['activity_location', 'activity_time_window', 'activity_start_time', 'activity_date'];
+            
+            fieldsToTrack.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('focus', function() {
+                        this.dataset.originalValue = this.value;
+                    });
+                    
+                    field.addEventListener('blur', function() {
+                        if (this.value !== this.dataset.originalValue) {
+                            console.log(`${fieldId} was manually edited`);
+                            this.dataset.manuallyEdited = 'true';
+                        }
+                    });
                 }
             });
         }

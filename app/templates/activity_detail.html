@@ -19,6 +19,74 @@
                     <h5 class="card-title">Activity Information</h5>
                     <p>Created: {{ activity.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
                     
+                    <!-- Date and Time Information -->
+                    {% if activity.proposed_date or activity.time_window %}
+                    <div class="date-time-info mt-3 mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-subtitle mb-2 text-muted">Proposed Schedule</h6>
+                                <div class="row mb-2">
+                                    {% if activity.proposed_date %}
+                                    <div class="col-md-6">
+                                        <p><i class="far fa-calendar-alt"></i> <strong>Date:</strong> {{ activity.proposed_date.strftime('%A, %B %d, %Y') }}</p>
+                                    </div>
+                                    {% endif %}
+                                    {% if activity.time_window %}
+                                    <div class="col-md-6">
+                                        <p><i class="far fa-clock"></i> <strong>Time Window:</strong> {{ activity.time_window }}</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="row">
+                                    {% if activity.start_time %}
+                                    <div class="col-md-6">
+                                        <p><i class="far fa-hourglass"></i> <strong>Start Time:</strong> {{ activity.start_time }}</p>
+                                    </div>
+                                    {% endif %}
+                                    {% if activity.location_address %}
+                                    <div class="col-md-6">
+                                        <p><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> {{ activity.location_address }}</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <!-- Alternative date/time suggestion for participants -->
+                                {% if participant and participant.status != 'complete' %}
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#suggestAlternativeTime">
+                                        <i class="fas fa-calendar-alt"></i> Suggest Alternative Time
+                                    </button>
+                                    <div class="collapse mt-2" id="suggestAlternativeTime">
+                                        <form action="{{ url_for('main.submit_answers', activity_id=activity.id) }}" method="post" id="alternative-time-form">
+                                            <div class="row g-2">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Alternative Date</label>
+                                                    <input type="date" class="form-control" id="alt_date" name="alt_date">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Alternative Time</label>
+                                                    <select class="form-select" id="alt_time" name="alt_time">
+                                                        <option value="">Select a time window</option>
+                                                        <option value="Morning (8am-12pm)">Morning (8am-12pm)</option>
+                                                        <option value="Afternoon (12pm-5pm)">Afternoon (12pm-5pm)</option>
+                                                        <option value="Evening (5pm-9pm)">Evening (5pm-9pm)</option>
+                                                        <option value="Night (9pm-12am)">Night (9pm-12am)</option>
+                                                        <option value="Full Day (9am-5pm)">Full Day (9am-5pm)</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-12 mt-2">
+                                                    <button type="submit" class="btn btn-sm btn-primary">Submit Suggestion</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
                     {% if activity.description %}
                     <div class="activity-description mt-3">
                         <h6>Activity Description:</h6>
@@ -169,6 +237,17 @@
                                                         <i class="fas fa-paper-plane"></i> Resend Invite
                                                     </button>
                                                 </form>
+                                            {% elif p.status == 'complete' or p.status == 'active' %}
+                                                <!-- View Preferences Button -->
+                                                <button type="button" class="btn btn-sm btn-outline-primary view-preferences-btn" 
+                                                    data-participant-id="{{ p.id }}" data-participant-name="{{ p.name or 'Participant' }}">
+                                                    <i class="fas fa-list-ul"></i> View Preferences
+                                                </button>
+                                                <form method="POST" action="{{ url_for('main.reset_participant_progress', activity_id=activity.id, participant_id=p.id) }}" style="display: inline; margin-top: 5px;" onsubmit="return confirm('Are you sure you want to reset this participant\'s progress? They will need to answer all questions again.');">
+                                                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                                                        <i class="fas fa-redo"></i> Reset Progress
+                                                    </button>
+                                                </form>
                                             {% else %}
                                                 <form method="POST" action="{{ url_for('main.reset_participant_progress', activity_id=activity.id, participant_id=p.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to reset this participant\'s progress? They will need to answer all questions again.');">
                                                     <button type="submit" class="btn btn-sm btn-outline-warning">
@@ -253,8 +332,112 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Preferences Modal -->
+<div class="modal fade" id="preferencesModal" tabindex="-1" aria-labelledby="preferencesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="preferencesModalLabel">Participant Preferences</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="preferences-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading preferences...</p>
+                </div>
+                <div id="preferences-content" class="d-none">
+                    <!-- Preferences will be displayed here -->
+                </div>
+                <div id="preferences-error" class="alert alert-danger d-none">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading preferences. Please try again.
+                </div>
+                <div id="no-preferences" class="alert alert-info d-none">
+                    <i class="fas fa-info-circle"></i> This participant hasn't submitted any preferences yet.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Set default date for alternative date field to tomorrow
+    const altDateField = document.getElementById('alt_date');
+    if (altDateField) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        altDateField.value = tomorrow.toISOString().split('T')[0];
+    }
+    
+    // Handle alternative time suggestion form
+    const alternativeTimeForm = document.getElementById('alternative-time-form');
+    if (alternativeTimeForm) {
+        alternativeTimeForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const altDate = document.getElementById('alt_date').value;
+            const altTime = document.getElementById('alt_time').value;
+            
+            if (!altDate || !altTime) {
+                alert('Please select both a date and time');
+                return;
+            }
+            
+            // Format the data for the API
+            const data = {
+                answers: {
+                    timing: {
+                        alternative_date: altDate,
+                        alternative_time_window: altTime
+                    }
+                }
+            };
+            
+            // Submit via AJAX
+            fetch('{{ url_for("main.submit_answers", activity_id=activity.id) }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    // Show success message
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-success mt-2';
+                    alertDiv.innerHTML = 'Your time suggestion has been saved!';
+                    
+                    // Insert after the form
+                    alternativeTimeForm.parentNode.appendChild(alertDiv);
+                    
+                    // Collapse the form
+                    const bsCollapse = bootstrap.Collapse.getInstance(document.getElementById('suggestAlternativeTime'));
+                    if (bsCollapse) {
+                        bsCollapse.hide();
+                    }
+                    
+                    // Remove the alert after a few seconds
+                    setTimeout(() => {
+                        alertDiv.remove();
+                    }, 5000);
+                } else {
+                    alert('Error submitting your suggestion. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error submitting your suggestion. Please try again.');
+            });
+        });
+    }
+    
     // Handle generate plan button
     const generatePlanBtn = document.getElementById('generate-plan-btn');
     if (generatePlanBtn) {
@@ -355,6 +538,171 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.remove();
             });
         });
+    }
+    
+    // Handle View Preferences buttons
+    const viewPreferencesButtons = document.querySelectorAll('.view-preferences-btn');
+    if (viewPreferencesButtons.length > 0) {
+        // Initialize the modal
+        const preferencesModal = new bootstrap.Modal(document.getElementById('preferencesModal'));
+        
+        // Add click handlers to each button
+        viewPreferencesButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const participantId = this.getAttribute('data-participant-id');
+                const participantName = this.getAttribute('data-participant-name');
+                
+                // Update modal title
+                document.getElementById('preferencesModalLabel').textContent = 
+                    `Preferences: ${participantName}`;
+                
+                // Show loading, hide content and errors
+                document.getElementById('preferences-loading').classList.remove('d-none');
+                document.getElementById('preferences-content').classList.add('d-none');
+                document.getElementById('preferences-error').classList.add('d-none');
+                document.getElementById('no-preferences').classList.add('d-none');
+                
+                // Show the modal
+                preferencesModal.show();
+                
+                // Fetch preferences
+                fetchParticipantPreferences(participantId);
+            });
+        });
+    }
+    
+    // Function to fetch participant preferences
+    function fetchParticipantPreferences(participantId) {
+        const activityId = document.getElementById('activity-id').value;
+        
+        fetch(`/api/activities/${activityId}/participants/${participantId}/preferences`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Hide loading
+                document.getElementById('preferences-loading').classList.add('d-none');
+                
+                if (!data.preferences || Object.keys(data.preferences).length === 0) {
+                    // No preferences found
+                    document.getElementById('no-preferences').classList.remove('d-none');
+                    return;
+                }
+                
+                // Format and display preferences
+                const preferencesContent = document.getElementById('preferences-content');
+                preferencesContent.innerHTML = formatPreferencesHTML(data.preferences);
+                preferencesContent.classList.remove('d-none');
+            })
+            .catch(error => {
+                console.error('Error fetching preferences:', error);
+                
+                // Hide loading, show error
+                document.getElementById('preferences-loading').classList.add('d-none');
+                document.getElementById('preferences-error').classList.remove('d-none');
+            });
+    }
+    
+    // Function to format preferences as HTML
+    function formatPreferencesHTML(preferences) {
+        let html = '<div class="preferences-container">';
+        
+        // Categories to display in a specific order
+        const categoryOrder = ['activity', 'timing', 'meals', 'budget', 'requirements', 'feedback'];
+        const categoryTitles = {
+            'activity': 'Activity Preferences',
+            'timing': 'Schedule & Timing',
+            'meals': 'Food & Dietary Needs',
+            'budget': 'Budget Preferences',
+            'requirements': 'Requirements & Special Needs',
+            'feedback': 'Additional Feedback',
+            'contact': 'Contact Information'
+        };
+        
+        // Sort the categories, putting known ones first in the specified order
+        const categories = Object.keys(preferences).sort((a, b) => {
+            const aIndex = categoryOrder.indexOf(a);
+            const bIndex = categoryOrder.indexOf(b);
+            
+            // If both categories are in the order list, sort by that order
+            if (aIndex !== -1 && bIndex !== -1) {
+                return aIndex - bIndex;
+            }
+            
+            // If only one category is in the order list, prioritize it
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            
+            // Otherwise, alphabetical
+            return a.localeCompare(b);
+        });
+        
+        // For each category, create a card
+        categories.forEach(category => {
+            if (category === 'contact') return; // Skip contact info, already displayed in the table
+            
+            const categoryPrefs = preferences[category];
+            if (!categoryPrefs || Object.keys(categoryPrefs).length === 0) return;
+            
+            const title = categoryTitles[category] || category.charAt(0).toUpperCase() + category.slice(1);
+            
+            html += `
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">${title}</h6>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+            `;
+            
+            // Add each preference as a definition term/description pair
+            Object.keys(categoryPrefs).forEach(key => {
+                const value = categoryPrefs[key];
+                const readableKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                // Special handling for feedback which can be long
+                if (category === 'feedback' && key === 'plan_feedback') {
+                    html += `
+                        <dt class="col-sm-12">${readableKey}:</dt>
+                        <dd class="col-sm-12">
+                            <div class="p-3 bg-light rounded">
+                                ${escapeHTML(value)}
+                            </div>
+                        </dd>
+                    `;
+                } else {
+                    html += `
+                        <dt class="col-sm-4">${readableKey}:</dt>
+                        <dd class="col-sm-8">${escapeHTML(value)}</dd>
+                    `;
+                }
+            });
+            
+            html += `
+                        </dl>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+    
+    // Helper function to escape HTML
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return str;
+        
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;')
+            .replace(/\n/g, '<br>');
     }
 });
 </script>
