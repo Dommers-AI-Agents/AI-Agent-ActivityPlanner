@@ -7,6 +7,7 @@ from app.models.planner import ActivityPlanner
 from app.services.sms_service import sms_service
 from app.services.email_service import email_service
 from app.services.claude_service import claude_service
+from sqlalchemy import text
 from app import db
 from flask_login import login_required, current_user
 
@@ -657,24 +658,12 @@ def submit_feedback(activity_id):
             
             flash("Thank you for your feedback! The plan has been updated.", "success")
             
-            # Notify all participants about the update
+            # Email notifications for activity updates are disabled
+            # Only the participant who submitted feedback will be notified
+            
+            # Send SMS notifications to participants who opted in
             for p in activity.participants:
-                # Skip participants without email
-                if not p.email:
-                    continue
-                
-                try:
-                    email_service.send_group_notification(
-                        [p.email],
-                        "Group Activity Plan Updated",
-                        f"The plan has been updated based on feedback. Please check the latest version.",
-                        activity_id
-                    )
-                except Exception as e:
-                    current_app.logger.error(f"Failed to send update email to {p.email}: {str(e)}")
-                
-                # Send SMS notification if they opted in
-                if p.allow_group_text and p.phone_number:
+               if p.allow_group_text and p.phone_number:
                     try:
                         sms_service.send_notification(
                             p.phone_number,
@@ -853,7 +842,7 @@ def delete_activity(activity_id):
         for participant in participants:
             # Delete preferences for each participant
             db.session.execute(
-                'DELETE FROM preferences WHERE participant_id = :participant_id',
+                text('DELETE FROM preferences WHERE participant_id = :participant_id'),
                 {'participant_id': participant.id}
             )
         

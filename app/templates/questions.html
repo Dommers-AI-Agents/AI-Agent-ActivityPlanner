@@ -28,7 +28,7 @@
                     </div>
                     
                     {% if all_complete %}
-                        <!-- Completed state -->
+                        <!-- Completed state - simplified -->
                         <div class="alert alert-success text-center mb-4">
                             <h4 class="alert-heading">Thank you!</h4>
                             <p>You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
@@ -37,50 +37,16 @@
                                 Return to Activity
                             </a>
                         </div>
-                        
-                        <!-- Summary of preferences -->
-                        <div class="card mb-4">
-                            <div class="card-header bg-success text-white">
-                                <h4 class="mb-0"><i class="fas fa-check-circle"></i> Preferences Completed</h4>
-                            </div>
-                            <div class="card-body">
-                                <p>Thank you for sharing your preferences! Here's a summary of what I understand about what you'd like:</p>
-                                
-                                <div id="final-preferences-summary">
-                                    <!-- This will be populated with the saved preferences -->
-                                    {% if preferences %}
-                                        <ul class="list-group list-group-flush">
-                                        {% for category, prefs in preferences.items() %}
-                                            <li class="list-group-item">
-                                                <strong>{{ category|capitalize }}:</strong>
-                                                <ul>
-                                                {% for key, value in prefs.items() %}
-                                                    <li>{{ key|replace('_', ' ')|capitalize }}: {{ value }}</li>
-                                                {% endfor %}
-                                                </ul>
-                                            </li>
-                                        {% endfor %}
-                                        </ul>
-                                    {% else %}
-                                        <p class="text-muted">You indicated you're open to any suggestions!</p>
-                                    {% endif %}
-                                </div>
-                                
-                                <div class="alert alert-info mt-3">
-                                    <p><i class="fas fa-info-circle"></i> The activity organizer has been notified that you've completed your preferences.</p>
-                                </div>
-                            </div>
-                        </div>
                     {% else %}
+                        <!-- Simplified chat interface with full width -->
                         <div class="row">
-                            <!-- Left: Conversation area -->
-                            <div class="col-md-6 mb-4">
-                                <!-- AI Conversation Box - mobile-friendly height -->
+                            <div class="col-12">
+                                <!-- AI Conversation Box -->
                                 <div id="ai-preference-chat" class="conversation-container mb-3" style="height: 350px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 15px;">
                                     <!-- Conversation will be inserted here by JavaScript -->
                                 </div>
                                 
-                                <!-- Input Area - mobile-friendly -->
+                                <!-- Input Area -->
                                 <div class="input-group mb-3">
                                     <input type="text" id="user-message" class="form-control" placeholder="Type your preferences..." aria-label="Your preferences">
                                     <button class="btn btn-primary send-message-btn" type="button" onclick="handleSendMessage(); return false;">
@@ -88,61 +54,11 @@
                                     </button>
                                 </div>
                                 
-                                <!-- Mobile-friendly button that spans full width -->
-                                <div class="d-grid gap-2">
+                                <!-- Submit button -->
+                                <div class="d-grid gap-2 mb-4">
                                     <button id="submit-preferences-btn" class="btn btn-success" onclick="submitFinalPreferences(); return false;">
                                         <i class="fas fa-check"></i> Submit My Preferences
                                     </button>
-                                </div>
-                            </div>
-                            
-                            <!-- Right: Preference summary -->
-                            <div class="col-md-6">
-                                <div class="card mb-4">
-                                    <div class="card-header">
-                                        <h4 class="mb-0">Preference Summary</h4>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="preferences-summary">
-                                            <p class="text-muted">As you share your preferences, I'll gather them here so you can review what I've understood.</p>
-                                            
-                                            <!-- Preference categories -->
-                                            <div class="preference-category mb-3">
-                                                <h5><i class="fas fa-heart"></i> Activity Interests</h5>
-                                                <div id="activity-interests-summary" class="preference-content">
-                                                    <span class="text-muted">None shared yet</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="preference-category mb-3">
-                                                <h5><i class="fas fa-calendar"></i> Timing & Availability</h5>
-                                                <div id="timing-summary" class="preference-content">
-                                                    <span class="text-muted">None shared yet</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="preference-category mb-3">
-                                                <h5><i class="fas fa-dollar-sign"></i> Budget</h5>
-                                                <div id="budget-summary" class="preference-content">
-                                                    <span class="text-muted">None shared yet</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="preference-category mb-3">
-                                                <h5><i class="fas fa-utensils"></i> Food & Dietary</h5>
-                                                <div id="food-summary" class="preference-content">
-                                                    <span class="text-muted">None shared yet</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="preference-category mb-3">
-                                                <h5><i class="fas fa-exclamation-circle"></i> Special Considerations</h5>
-                                                <div id="special-considerations-summary" class="preference-content">
-                                                    <span class="text-muted">None shared yet</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -150,34 +66,11 @@
                 </div>
             </div>
             
-            <!-- Information about the activity -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h4 class="mb-0">About This Activity</h4>
-                </div>
-                <div class="card-body">
-                    <h5>{{ activity.title or "Group Activity" }}</h5>
-                    {% if activity.description %}
-                        <p>{{ activity.description }}</p>
-                    {% endif %}
-                    
-                    <p><strong>Organizer:</strong> 
-                    {% set organizer = activity.participants[0] %}
-                    {{ organizer.name or "Unnamed Organizer" }}
-                    </p>
-                    
-                    <p><strong>Status:</strong> 
-                        <span class="badge {% if activity.status == 'planning' %}bg-info{% elif activity.status == 'planned' %}bg-primary{% elif activity.status == 'finalized' %}bg-success{% else %}bg-secondary{% endif %}">
-                            {{ activity.status.capitalize() }}
-                        </span>
-                    </p>
-                    
-                    <div class="text-center mt-3">
-                        <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-arrow-left"></i> Back to Activity
-                        </a>
-                    </div>
-                </div>
+            <!-- Back to activity button -->
+            <div class="text-center mt-2 mb-4">
+                <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Activity
+                </a>
             </div>
         </div>
     </div>
@@ -250,11 +143,34 @@
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
     
+    // Track number of messages to avoid repetitive responses
+    var messageCount = 0;
+    
     function processUserInput(message) {
+        messageCount++;
+        
         // Simulate AI processing
         setTimeout(() => {
-            // Simple response
-            addMessageToChat('assistant', "Thanks for sharing! I've recorded your preferences. Please add any other details you'd like to share, or click 'Submit My Preferences' when you're done.");
+            let response;
+            
+            // Only show the standard response after the first message
+            if (messageCount === 1) {
+                response = "Thanks for sharing! I've recorded your preferences. Please add any other details you'd like to share, or click 'Submit My Preferences' when you're done.";
+            } else {
+                // Varied responses for subsequent messages
+                const responses = [
+                    "Got it! Anything else you'd like to share?",
+                    "I've noted that down. Any other preferences?",
+                    "Thank you for the additional information.",
+                    "Understood! Is there anything else that would make this activity better for you?"
+                ];
+                
+                // Pick a random response
+                const randomIndex = Math.floor(Math.random() * responses.length);
+                response = responses[randomIndex];
+            }
+            
+            addMessageToChat('assistant', response);
         }, 500);
     }
     

@@ -351,24 +351,11 @@ def api_submit_feedback(activity_id, plan_id):
     
     if send_notifications:
         activity = Activity.query.get(activity_id)
-        # Notify all participants about the update
+        # Email notifications for activity updates are disabled
+        
+        # Send SMS notifications to participants who opted in
         for p in activity.participants:
-            # Skip participants without email
-            if not p.email:
-                continue
-            
-            try:
-                email_service.send_group_notification(
-                    [p.email],
-                    "Group Activity Plan Updated",
-                    f"The plan has been updated based on feedback. Please check the latest version.",
-                    activity_id
-                )
-            except Exception as e:
-                current_app.logger.error(f"Failed to send update email to {p.email}: {str(e)}")
-            
-            # Send SMS notification if they opted in
-            if p.allow_group_text and p.phone_number:
+           if p.allow_group_text and p.phone_number:
                 try:
                     sms_service.send_notification(
                         p.phone_number,
