@@ -60,3 +60,7 @@ temp/
 htmlcov/
 .pytest_cache/
 .tox/
+
+# localhost https pem and key
+localhost+2.pem
+localhost+2-key.pem
