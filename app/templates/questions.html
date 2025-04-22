@@ -28,14 +28,30 @@
                     </div>
                     
                     {% if all_complete %}
-                        <!-- Completed state - simplified -->
-                        <div class="alert alert-success text-center mb-4">
-                            <h4 class="alert-heading">Thank you!</h4>
-                            <p>You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
+                        <!-- Completed state with conversation summary -->
+                        <div class="alert alert-success mb-4">
+                            <h4 class="alert-heading text-center">Thank you!</h4>
+                            <p class="text-center">You've completed sharing your preferences. Your input will help create a great activity plan for the group!</p>
+                            
                             <hr>
-                            <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary mt-3">
-                                Return to Activity
-                            </a>
+                            
+                            <!-- Show preference summary if it exists -->
+                            {% if preferences and preferences.preferences and preferences.preferences.summary %}
+                                <div class="preferences-summary">
+                                    <h5><i class="fas fa-list-check"></i> Your Preferences:</h5>
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <pre class="mb-0" style="white-space: pre-wrap; font-family: inherit;">{{ preferences.preferences.summary }}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            <div class="text-center mt-4">
+                                <a href="{{ url_for('main.activity_detail', activity_id=activity.id) }}" class="btn btn-primary">
+                                    Return to Activity
+                                </a>
+                            </div>
                         </div>
                     {% else %}
                         <!-- Simplified chat interface with full width -->
@@ -95,6 +111,9 @@
         processUserInput(message);
     }
     
+    // Array to store conversation history
+    let conversationHistory = [];
+    
     function submitFinalPreferences() {
         if (!confirm('Are you ready to submit your preferences? You won\'t be able to change them after submission.')) {
             return;
@@ -106,12 +125,30 @@
         // Add a final message
         addMessageToChat('assistant', "Thank you! Saving your preferences...");
         
-        // Submit to server
+        // Add the final thank you message to conversation history
+        conversationHistory.push({
+            role: 'assistant',
+            content: "Thank you! Saving your preferences..."
+        });
+        
+        // Submit to server with the entire conversation history
         fetch(`/activity/${document.getElementById('activity-id').value}/submit-answers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                answers: { requirements: { additional_info: "Submitted via form" } },
+                // Include minimal structured data for backward compatibility
+                answers: { 
+                    contact: {
+                        // Try to find name/email in conversation or use placeholder
+                        name: localStorage.getItem('participant_name') || "Participant", 
+                        email: localStorage.getItem('participant_email') || ""
+                    },
+                    requirements: { 
+                        additional_info: "Submitted via conversation interface" 
+                    }
+                },
+                // Include the full conversation history
+                conversation: conversationHistory,
                 is_final: true
             })
         })
@@ -149,6 +186,12 @@
     function processUserInput(message) {
         messageCount++;
         
+        // Add user message to conversation history
+        conversationHistory.push({
+            role: 'user',
+            content: message
+        });
+        
         // Simulate AI processing
         setTimeout(() => {
             let response;
@@ -170,6 +213,12 @@
                 response = responses[randomIndex];
             }
             
+            // Add assistant response to conversation history
+            conversationHistory.push({
+                role: 'assistant',
+                content: response
+            });
+            
             addMessageToChat('assistant', response);
         }, 500);
     }
@@ -178,7 +227,22 @@
     document.addEventListener('DOMContentLoaded', function() {
         const chatContainer = document.getElementById('ai-preference-chat');
         if (chatContainer) {
-            addMessageToChat('assistant', "Hello! Please share your preferences for this activity. For example, any schedule constraints, dietary needs, or special requirements?");
+            const initialMessage = "Hello! Please share your preferences for this activity. For example, any schedule constraints, dietary needs, or special requirements?";
+            
+            // Add to the UI
+            addMessageToChat('assistant', initialMessage);
+            
+            // Add to conversation history
+            conversationHistory.push({
+                role: 'assistant',
+                content: initialMessage
+            });
+            
+            // Make sure the Submit button says the right thing
+            const submitBtn = document.getElementById('submit-preferences-btn');
+            if (submitBtn) {
+                submitBtn.textContent = "Submit My Preferences";
+            }
         }
     });
     

@@ -92,30 +92,39 @@
                 <div class="card-body">
                     <div id="claude-suggestions-container">
                         {% if ai_suggestions %}
-                            <div class="alert alert-success">
-                                <h5 class="alert-heading">Claude's Recommended Changes</h5>
-                                <p>{{ ai_suggestions.summary }}</p>
-                                
-                                {% if ai_suggestions.changes_list %}
-                                <hr>
-                                <div class="suggested-changes">
-                                    <h6>Suggested Changes:</h6>
-                                    <ul>
-                                        {% for change in ai_suggestions.changes_list %}
-                                        <li>{{ change }}</li>
-                                        {% endfor %}
-                                    </ul>
+                            <div class="card border-success">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0">Claude's Recommended Changes</h5>
                                 </div>
-                                {% endif %}
-                                
-                                <!-- Apply changes button -->
-                                <div class="mt-3">
-                                    <form action="{{ url_for('main.apply_ai_suggestions', activity_id=activity.id, plan_id=plan.id) }}" method="POST">
-                                        <input type="hidden" name="suggestion_id" value="{{ ai_suggestions.id }}">
-                                        <button type="submit" class="btn btn-success">
-                                            <i class="fas fa-check"></i> Apply These Changes
-                                        </button>
-                                    </form>
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-3">Claude's Analysis:</h6>
+                                    <div class="p-3 bg-light rounded mb-4">
+                                        {{ ai_suggestions.summary|nl2br }}
+                                    </div>
+                                    
+                                    {% if ai_suggestions.changes_list %}
+                                    <h6 class="card-subtitle mb-3">Specific Suggestions:</h6>
+                                    <div class="suggested-changes p-3 bg-light rounded mb-4">
+                                        <ol class="mb-0">
+                                            {% for change in ai_suggestions.changes_list %}
+                                            <li class="mb-2">{{ change|nl2br }}</li>
+                                            {% endfor %}
+                                        </ol>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    <!-- Apply changes button -->
+                                    <div class="text-center mt-4">
+                                        <form action="{{ url_for('main.apply_ai_suggestions', activity_id=activity.id, plan_id=plan.id) }}" method="POST">
+                                            <input type="hidden" name="suggestion_id" value="{{ ai_suggestions.id }}">
+                                            <button type="submit" class="btn btn-success btn-lg">
+                                                <i class="fas fa-check"></i> Apply These Changes
+                                            </button>
+                                            <p class="text-muted mt-2">
+                                                <small>This will create a new version of the plan with Claude's suggested changes</small>
+                                            </p>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         {% else %}

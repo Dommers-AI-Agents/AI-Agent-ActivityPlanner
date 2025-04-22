@@ -81,6 +81,42 @@
                 </div>
                 {% endif %}
                 
+                <!-- Display participant inputs (preferences and feedback) -->
+                {% if participant_inputs %}
+                <div class="participant-inputs mt-4">
+                    <h4>{% if is_creator %}Participant Input{% else %}Your Input{% endif %}</h4>
+                    
+                    {% for input in participant_inputs %}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <strong>{{ input.name }}</strong>
+                        </div>
+                        <div class="card-body">
+                            {% if input.preferences or input.feedback %}
+                            <div class="input-section">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <pre class="mb-0" style="white-space: pre-wrap; font-family: inherit;">
+                                            {%- if input.preferences %}{{ input.preferences }}{% endif -%}
+                                            
+                                            {%- if input.preferences and input.feedback -%}
+                                            
+                                            =====================
+                                            FEEDBACK ON PLAN:
+                                            =====================
+                                            {% endif %}
+                                            {%- if input.feedback %}{{ input.feedback }}{% endif -%}
+                                        </pre>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
                 {% if plan.status == 'final' %}
                 <div class="alert alert-success mt-4">
                     <h5 class="alert-heading">Plan Finalized!</h5>
