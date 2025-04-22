@@ -326,13 +326,48 @@ class AISuggestion(db.Model):
     def __repr__(self):
         return f'<AISuggestion for Plan {self.plan_id}>'
     
+    def _clean_html_tags(self, text):
+        """Convert HTML <br> tags to newlines and clean up other HTML."""
+        if not text or not isinstance(text, str):
+            return text
+            
+        # Replace <br>, <br/>, <br /> with newlines
+        import re
+        text = re.sub(r'<br\s*/?>', '\n', text)
+        
+        # Remove other HTML tags if present
+        text = re.sub(r'<[^>]*>', '', text)
+        
+        return text
+    
+    @property
+    def cleaned_summary(self):
+        """Get summary with HTML tags cleaned."""
+        # First ensure we're working with the full summary text
+        full_summary = self.summary
+        
+        # Remove any HTML tags (especially <br>)
+        clean_text = self._clean_html_tags(full_summary)
+        
+        # For debugging
+        import logging
+        logging.getLogger().info(f"Original summary: {full_summary[:100]}...")
+        logging.getLogger().info(f"Cleaned summary: {clean_text[:100]}...")
+        
+        return clean_text
+    
     @property
     def changes_list(self):
         """Get changes as a list."""
         if not self.changes:
             return []
         try:
-            return json.loads(self.changes)
+            changes = json.loads(self.changes)
+            # Clean HTML in each change item
+            for i, change in enumerate(changes):
+                if isinstance(change, str):
+                    changes[i] = self._clean_html_tags(change)
+            return changes
         except json.JSONDecodeError:
             return []
     
@@ -342,7 +377,7 @@ class AISuggestion(db.Model):
             'id': self.id,
             'plan_id': self.plan_id,
             'activity_id': self.activity_id,
-            'summary': self.summary,
+            'summary': self.cleaned_summary,
             'changes': self.changes_list,
             'created_at': self.created_at.isoformat(),
         }

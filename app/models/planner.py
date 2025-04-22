@@ -1353,11 +1353,14 @@ class ActivityPlanner:
                         alt_text += f"Cons: {alt['cons']}\n"
                     suggestions.append(alt_text)
                 
+                # Clean any HTML from the summary first
+                clean_summary = self._clean_html_tags(summary)
+                
                 # Create AISuggestion object with the formatted content
                 suggestion = AISuggestion(
                     plan_id=plan_id,
                     activity_id=self.activity_id,
-                    summary=summary[:500],  # Limit summary length
+                    summary=clean_summary[:2000],  # Increased limit to 2000 chars
                     changes=json.dumps(suggestions),
                 )
                 

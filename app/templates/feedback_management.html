@@ -99,7 +99,7 @@
                                 <div class="card-body">
                                     <h6 class="card-subtitle mb-3">Analysis of Feedback:</h6>
                                     <div class="p-3 bg-light rounded mb-4">
-                                        {{ ai_suggestions.summary|nl2br }}
+                                        {{ ai_suggestions.cleaned_summary|nl2br }}
                                     </div>
                                     
                                     {% if ai_suggestions.changes_list %}
