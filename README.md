@@ -157,6 +157,21 @@ ai-planner/
 
 ## Development
 
+### Development Mode
+
+The application can be run in development mode, which provides additional debugging features and enables local HTTPS:
+
+```bash
+# Run in development mode with SSL
+python main.py --dev
+```
+
+Development mode features:
+- Auto-reloading when files change
+- Detailed error pages
+- HTTPS support with local self-signed certificates
+- Access from other devices on your local network (192.168.x.x)
+
 ### Adding New Question Types
 
 1. Update the `generate_questions_batch` method in `app/models/planner.py`
@@ -207,12 +222,63 @@ heroku run flask db upgrade
 
 A `Dockerfile` and `docker-compose.yml` are provided for containerized deployment.
 
+#### Starting and Stopping the Application
+
+We provide convenient scripts to manage the application:
+
+```bash
+# Start the application (Docker containers + Python script)
+./start.sh
+
+# Stop the application
+./stop.sh
+
+# Restart the application
+./restart.sh
+```
+
+These scripts manage both:
+- The Docker containers (web server and database)
+- The main.py process which runs in the background
+
+#### Viewing Logs
+
+Application logs are stored in app.log. You can view them with:
+
+```bash
+# View the entire log file
+cat app.log
+
+# View last 100 lines
+tail -n 100 app.log
+
+# Follow logs in real-time (press Ctrl+C to exit)
+tail -f app.log
+```
+
+For Docker-specific logs:
+
+```bash
+# View web container logs
+docker-compose logs web
+
+# Follow web container logs
+docker-compose logs -f web
+```
+
+#### Manual Docker Commands
+
+If you prefer to use Docker commands directly:
+
 ```bash
 # Build and run with Docker Compose
 docker-compose up -d
 
 # Run migrations
 docker-compose exec web flask db upgrade
+
+# Stop containers
+docker-compose down
 ```
 
 ## Contributing

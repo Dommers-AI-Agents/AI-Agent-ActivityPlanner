@@ -8,6 +8,8 @@ services:
       - "8080:443"
     depends_on:
       - db
+    # You can uncomment this for debug mode to see logs directly
+    # command: bash -c "python main.py & gunicorn --bind 0.0.0.0:443 --certfile /app/ssl/cloudflare.pem --keyfile /app/ssl/cloudflare-key.pem main:app"
     environment:
       - FLASK_APP=main.py
       - FLASK_ENV=production
