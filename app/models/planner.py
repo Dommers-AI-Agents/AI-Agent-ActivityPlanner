@@ -1084,7 +1084,7 @@ class ActivityPlanner:
             return fallback_response
 
     def analyze_feedback_with_claude(self, plan_id):
-        """Analyze feedback from all participants and generate suggestions for plan improvements.
+        """Analyze feedback and preferences from all participants and generate suggestions for plan improvements.
         
         Args:
             plan_id (str): The plan ID to analyze feedback for.
@@ -1092,7 +1092,7 @@ class ActivityPlanner:
         Returns:
             AISuggestion: The AI suggestion object with recommended changes.
         """
-        from app.models.database import AISuggestion, Preference
+        from app.models.database import AISuggestion, Preference, Participant
         from app.services.claude_service import claude_service
         from flask import current_app
         
@@ -1100,8 +1100,48 @@ class ActivityPlanner:
         if not plan:
             raise ValueError(f"Plan with ID {plan_id} not found")
         
-        # Get all feedback for this activity
-        feedback_list = Preference.get_feedback_for_activity(self.activity_id)
+        # Get all feedback and preference summaries
+        feedback_list = []
+        
+        # Process participants to get both preferences and feedback
+        participants = Participant.query.filter_by(activity_id=self.activity_id).all()
+        
+        for participant in participants:
+            p_preferences = self.get_participant_preferences(participant.id)
+            preference_summary = None
+            feedback = None
+            
+            # Get preference summary if it exists
+            if p_preferences and 'preferences' in p_preferences and 'summary' in p_preferences['preferences']:
+                preference_summary = p_preferences['preferences']['summary']
+                
+            # Get feedback if it exists
+            if p_preferences and 'feedback' in p_preferences and 'plan_feedback' in p_preferences['feedback']:
+                feedback = p_preferences['feedback']['plan_feedback']
+                
+            # Only add if there's something to display
+            if preference_summary or feedback:
+                combined_text = ""
+                
+                # Add preferences first
+                if preference_summary:
+                    combined_text += preference_summary
+                    
+                # Add separator and feedback if it exists
+                if preference_summary and feedback:
+                    combined_text += "\n\n====== FEEDBACK ON PLAN ======\n"
+                    
+                # Add feedback
+                if feedback:
+                    combined_text += feedback
+                    
+                # Add to combined list if we have content
+                if combined_text.strip():
+                    feedback_list.append({
+                        'participant_name': participant.name or f"Participant {participant.id}",
+                        'feedback': combined_text,
+                        'created_at': participant.updated_at.strftime('%Y-%m-%d %H:%M') if participant.updated_at else datetime.now().strftime('%Y-%m-%d %H:%M')
+                    })
         
         # If no feedback is available, use a placeholder for Claude to just analyze the plan itself
         if not feedback_list:
@@ -1127,24 +1167,33 @@ class ActivityPlanner:
         You are an AI-powered Activity Planner that analyzes plans and suggests improvements.
         
         Your task is to:
-        1. Review the current plan and any available feedback from participants
-        2. Identify potential improvements or enhancements to the plan
-        3. Recommend specific changes to improve the plan
-        4. Create a clear summary of your recommendations
+        1. Review the current plan and the feedback from participants
+        2. Identify concrete improvements or enhancements to the plan based on participant preferences
+        3. Recommend specific changes to improve the plan with exact wording changes
+        4. Create a clear, actionable analysis of the plan and feedback
         
-        Format your response as JSON with the following structure:
-        {
-            "summary": "A concise summary of your analysis and overall recommendations",
-            "changes": [
-                "Specific change #1 recommendation",
-                "Specific change #2 recommendation"
-            ],
-            "revised_title": "Suggested new title if needed",
-            "revised_description": "Suggested revised description if needed",
-            "revised_date": "YYYY-MM-DD (only if date change is suggested)",
-            "revised_start_time": "HH:MM (only if time change is suggested)",
-            "revised_location": "New location address (only if location change is suggested)"
-        }
+        IMPORTANT: Provide your response in a natural, conversational format - NOT as structured JSON.
+        
+        Your response should follow this general structure, but in natural language paragraphs:
+        
+        1. First, provide an overview of the participant input and what key themes or needs you've identified
+        
+        2. Then, suggest 3-5 specific improvements to the plan, with exact wording for each change when appropriate
+           - For example: "Consider changing the description from X to Y to better accommodate the preferences for..."
+           - Or: "Based on multiple participants mentioning a preference for evening activities, I suggest changing the start time to 6:00 PM"
+        
+        3. If applicable, suggest specific changes to:
+           - The plan title
+           - The plan description (with exact replacement text)
+           - Date or time (with specific suggestions)
+           - Location (with specific alternatives)
+           
+        IMPORTANT GUIDELINES:
+        - Provide a CONCRETE analysis with SPECIFIC text changes
+        - Use the EXACT participants' words when appropriate
+        - Suggest SPECIFIC modifications to the plan description that directly address participant preferences
+        - Never return a generic response like "Please review manually" - always give specific suggestions
+        - Include specific text examples of how to modify the plan description
         """
         
         # Format feedback for the prompt
@@ -1153,7 +1202,7 @@ class ActivityPlanner:
             feedback_text += f"Feedback #{i} from {fb['participant_name']}:\n{fb['feedback']}\n\n"
         
         message = f"""
-        I need to analyze{' participant feedback for' if len(feedback_list) > 1 else ''} an activity plan and suggest improvements.
+        I need to analyze participant input for a group activity plan and suggest specific improvements to meet their preferences.
         
         Current plan details:
         
@@ -1168,10 +1217,20 @@ class ActivityPlanner:
         Schedule:
         {json.dumps(current_plan['schedule'], indent=2) if current_plan['schedule'] else 'No detailed schedule'}
         
-        {'Participant Feedback:' if len(feedback_list) > 1 or feedback_list[0]['participant_name'] != 'System' else 'Note:'}
+        === PARTICIPANT INPUT ===
+        
         {feedback_text}
         
-        {'Please analyze this feedback and suggest changes to improve the plan. Focus on addressing the most important concerns while staying true to the original activity concept.' if len(feedback_list) > 1 or feedback_list[0]['participant_name'] != 'System' else 'Please analyze this plan and suggest potential improvements or enhancements. Even though there is no participant feedback yet, identify any areas that could be improved or clarified to create a better experience.'}
+        YOUR TASK:
+        1. Analyze all participant input carefully, including initial preferences and any feedback on the plan.
+        2. Create SPECIFIC, CONCRETE suggestions to modify the plan to better meet participants' needs.
+        3. Provide EXACT replacement text for parts of the plan that should be modified.
+        4. Suggest additions or changes to the description, date, time, location, etc. based directly on participant input.
+        5. Include direct quotes from participants when applicable to show how your suggestions address their input.
+        
+        DO NOT return a generic suggestion like "please review manually." Instead, provide specific text changes and additions that would improve the plan.
+        
+        Remember that your goal is to help create a plan that addresses the specific preferences and concerns that participants have shared.
         """
         
         try:
@@ -1182,25 +1241,58 @@ class ActivityPlanner:
             # Parse the response
             response_content = response.get("content", [])[0].get("text", "")
             
+            # Process the natural language response (not JSON anymore)
             try:
-                # Parse JSON response - first clean it up to avoid parsing issues
+                # Clean up the response content
                 clean_response = response_content.strip()
                 
-                # If it starts with markdown JSON code block, remove it
-                if clean_response.startswith("```json"):
-                    end_marker = "```"
-                    if end_marker in clean_response:
-                        clean_response = clean_response[7:clean_response.rindex(end_marker)].strip()
+                # Extract the main sections of the response
+                # First get an overall summary from the beginning paragraphs
+                paragraphs = clean_response.split('\n\n')
+                if not paragraphs:
+                    paragraphs = [clean_response]  # Use the whole text if no paragraphs
                 
-                # Try to parse as JSON
-                suggestion_data = json.loads(clean_response)
+                # Use first paragraph as summary
+                summary = paragraphs[0]
+                if len(paragraphs) > 1:
+                    # Add a bit from the second paragraph if available to make a fuller summary
+                    summary += "\n\n" + paragraphs[1]
                 
-                # Create AISuggestion object
+                # Extract specific suggestions from the response
+                suggestions = []
+                
+                # Look for bullet points, numbered lists, or paragraphs that suggest changes
+                for line in clean_response.split('\n'):
+                    line = line.strip()
+                    # Look for bullet points, numbered items, or paragraphs with suggestion keywords
+                    if (line.startswith('-') or line.startswith('*') or 
+                        re.match(r'^\d+\.', line) or 
+                        any(keyword in line.lower() for keyword in ["suggest", "change", "update", "modify", "consider"])):
+                        if line and len(line) > 10:  # Minimum length to be meaningful
+                            suggestions.append(line)
+                
+                # If we couldn't find suggestions with the above method, try to break text into meaningful chunks
+                if not suggestions:
+                    # Split by common separators and extract meaningful chunks
+                    chunks = re.split(r'\n+|(?<=[.!?])\s+', clean_response)
+                    for chunk in chunks:
+                        if len(chunk) > 20 and any(keyword in chunk.lower() for keyword in ["suggest", "change", "improve", "recommend", "update", "consider"]):
+                            suggestions.append(chunk)
+                
+                # If we still have no suggestions, use the paragraphs after the first two
+                if not suggestions and len(paragraphs) > 2:
+                    suggestions = paragraphs[2:]
+                
+                # If we still have nothing, use the entire response
+                if not suggestions:
+                    suggestions = [clean_response]
+                
+                # Create AISuggestion object with natural language content
                 suggestion = AISuggestion(
                     plan_id=plan_id,
                     activity_id=self.activity_id,
-                    summary=suggestion_data.get('summary', 'No summary provided'),
-                    changes=json.dumps(suggestion_data.get('changes', [])),
+                    summary=summary[:500],  # Limit summary length
+                    changes=json.dumps(suggestions),
                 )
                 
                 # Log the data we're saving
@@ -1213,39 +1305,41 @@ class ActivityPlanner:
                 
                 return suggestion
                 
-            except json.JSONDecodeError as e:
-                # Handle non-JSON response
-                current_app.logger.error(f"Failed to parse Claude response as JSON: {e}")
+            except Exception as e:
+                # Handle any errors during processing
+                current_app.logger.error(f"Failed to process Claude response: {e}")
                 current_app.logger.error(f"Response content: {response_content[:500]}")
                 
-                # Try to extract useful content from the response
-                # Even if it's not valid JSON, see if we can parse out suggestions
-                suggestions = []
-                
-                # Look for potential suggestions in the text
-                if "recommendations" in response_content.lower() or "suggestions" in response_content.lower() or "changes" in response_content.lower():
-                    lines = response_content.split('\n')
-                    for line in lines:
-                        # Look for bullet points or numbered items that might be suggestions
-                        if line.strip().startswith('-') or line.strip().startswith('*') or re.match(r'^\d+\.', line.strip()):
-                            suggestions.append(line.strip())
-                
-                # If we couldn't find any suggestions, use a default message
-                if not suggestions:
-                    suggestions = ["Please review the plan and feedback manually and make appropriate changes."]
-                
-                # Create a suggestion with the extracted suggestions or default
-                suggestion = AISuggestion(
-                    plan_id=plan_id,
-                    activity_id=self.activity_id,
-                    summary=f"Claude analyzed {len(feedback_list)} pieces of feedback but provided an unstructured response.",
-                    changes=json.dumps(suggestions)
-                )
-                
-                db.session.add(suggestion)
-                db.session.commit()
-                
-                return suggestion
+                # Create a simple suggestion with the full response text
+                try:
+                    # Just use the raw response and extract basic info
+                    first_lines = response_content.split('\n')[:5]
+                    summary = ' '.join(first_lines) if first_lines else "Claude analyzed the feedback but the response format was unexpected."
+                    suggestion = AISuggestion(
+                        plan_id=plan_id,
+                        activity_id=self.activity_id,
+                        summary=summary[:500],  # Limit summary length
+                        changes=json.dumps([response_content[:1000]])  # Use the beginning of the response as a change suggestion
+                    )
+                    
+                    db.session.add(suggestion)
+                    db.session.commit()
+                    
+                    return suggestion
+                except Exception as nested_e:
+                    current_app.logger.error(f"Failed to create fallback suggestion: {nested_e}")
+                    # Last resort emergency fallback
+                    suggestion = AISuggestion(
+                        plan_id=plan_id,
+                        activity_id=self.activity_id,
+                        summary=f"Claude analyzed {len(feedback_list)} pieces of feedback but encountered processing issues.",
+                        changes=json.dumps(["Please review the plan and feedback manually and make appropriate changes."])
+                    )
+                    
+                    db.session.add(suggestion)
+                    db.session.commit()
+                    
+                    return suggestion
                 
         except Exception as e:
             current_app.logger.error(f"Error analyzing feedback with Claude: {str(e)}")
@@ -1272,31 +1366,45 @@ class ActivityPlanner:
         if not original_plan:
             raise ValueError(f"Original plan with ID {suggestion.plan_id} not found")
         
-        # Get suggestion data
-        suggestion_data = {}
+        # Get suggestion changes
+        suggested_changes = []
         try:
-            # Try to parse the suggestion response as JSON
-            suggestion_data = json.loads(suggestion.changes)
+            # Try to parse the suggestion changes from JSON
+            suggested_changes = json.loads(suggestion.changes)
+            if not isinstance(suggested_changes, list):
+                suggested_changes = [str(suggested_changes)]
         except (json.JSONDecodeError, TypeError):
-            # If it's not valid JSON, use an empty dict
-            suggestion_data = {}
+            # If it's not valid JSON, use an empty list
+            suggested_changes = []
         
         # Create a new revised plan
         revised_plan = Plan(
             activity_id=self.activity_id,
-            title=suggestion_data.get('revised_title', f"Revised: {original_plan.title}"),
-            description=suggestion_data.get('revised_description', original_plan.description),
+            title=f"Revised: {original_plan.title}",
+            description=original_plan.description,
             scheduled_date=original_plan.scheduled_date,
             time_window=original_plan.time_window,
-            start_time=suggestion_data.get('revised_start_time', original_plan.start_time),
-            location_address=suggestion_data.get('revised_location', original_plan.location_address),
+            start_time=original_plan.start_time,
+            location_address=original_plan.location_address,
             schedule=original_plan.schedule,  # Keep original schedule for now
             status='revised'
         )
         
-        # Add a note about the AI-suggested changes
+        # Add the AI-suggested changes to the plan description
+        revised_plan.description += "\n\n------------------------------\n"
+        revised_plan.description += "REVISIONS BASED ON PARTICIPANT FEEDBACK:\n"
+        revised_plan.description += "------------------------------\n\n"
+        
+        # Add the summary from the AI suggestion
         if suggestion.summary:
-            revised_plan.description += f"\n\nRevisions based on AI analysis of participant feedback:\n{suggestion.summary}"
+            revised_plan.description += f"{suggestion.summary}\n\n"
+        
+        # Add the detailed changes/suggestions
+        if suggested_changes:
+            revised_plan.description += "Specific suggested improvements:\n\n"
+            for i, change in enumerate(suggested_changes, 1):
+                # Format each suggestion as a numbered item
+                revised_plan.description += f"{i}. {change}\n\n"
         
         db.session.add(revised_plan)
         db.session.commit()

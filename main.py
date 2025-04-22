@@ -44,15 +44,15 @@ if __name__ == '__main__':
     dev_key_path = os.path.join(os.path.dirname(__file__), 'ssl/dev/dev-key.pem')
     
     if args.dev:
-        # Development mode - run on localhost with development SSL certificates
-        print("Running in DEVELOPMENT mode on localhost")
+        # Development mode - run on all interfaces for local network access
+        print("Running in DEVELOPMENT mode on all interfaces (accessible from local network)")
         os.environ['FLASK_ENV'] = 'development'
         
         # Use development SSL certificates
         if os.path.exists(dev_cert_path) and os.path.exists(dev_key_path):
             print(f"Using development SSL certificates")
             app.run(
-                host='127.0.0.1', 
+                host='0.0.0.0',  # Listen on all interfaces to be accessible from LAN
                 port=port,
                 debug=True,
                 ssl_context=(dev_cert_path, dev_key_path)

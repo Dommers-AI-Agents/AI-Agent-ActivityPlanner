@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app import db
 from flask_login import login_required, current_user
 from datetime import datetime
+import re  # For regex pattern matching
 
 main_bp = Blueprint('main', __name__)
 
@@ -463,7 +464,7 @@ def activity_questions(activity_id):
 
 @main_bp.route('/activity/<activity_id>/submit-answers', methods=['POST'])
 def submit_answers(activity_id):
-    """Submit answers to questions."""
+    """Submit answers/preferences to questions."""
     # Get the activity
     activity = Activity.query.get_or_404(activity_id)
     
@@ -485,30 +486,145 @@ def submit_answers(activity_id):
     data = request.json
     current_app.logger.info(f"Received data: {data}")
     
-    # Get answers - could be a flat dict or an object with category structure
-    answers = data.get('answers', {})
-    if not answers:
-        current_app.logger.warning(f"No answers submitted for participant {participant_id}")
-        return jsonify({"error": "No answers provided"}), 400
-    
     # Check if this is a final submission
     is_final = data.get('is_final', False)
     current_app.logger.info(f"Is final submission: {is_final}")
     
-    # Save answers as preferences
-    planner = ActivityPlanner(activity_id)
-    
-    # Check if we have a new structure with categories already defined
-    if isinstance(answers, dict) and any(key in ['contact', 'activity', 'timing', 'group', 'meals', 'requirements'] for key in answers.keys()):
-        # New structure - iterate through categories
-        for category, prefs in answers.items():
-            if not isinstance(prefs, dict):
-                continue
+    # Check for conversation data (unstructured format)
+    conversation = data.get('conversation', [])
+    if conversation:
+        # Save the entire conversation as a single preference and also extract key preferences
+        planner = ActivityPlanner(activity_id)
+        
+        # Convert conversation to a formatted string
+        conversation_text = ""
+        participant_inputs = []
+        
+        for msg in conversation:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            
+            if role == 'user':
+                conversation_text += f"Participant: {content}\n\n"
+                # Add user messages to a list for preference extraction
+                participant_inputs.append(content)
+            elif role == 'assistant':
+                conversation_text += f"Claude: {content}\n\n"
+        
+        # Save the entire conversation in the background for reference
+        if conversation_text:
+            current_app.logger.info(f"Saving conversation for participant {participant_id}")
+            
+            # Save conversation to messages table rather than as a preference
+            from app.models.database import Message
+            
+            for msg in conversation:
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', '')
                 
-            for question_id, answer in prefs.items():
-                if not answer:  # Skip empty answers
+                # Only save if we have content
+                if content:
+                    direction = 'incoming' if role == 'user' else 'outgoing'
+                    
+                    message = Message(
+                        activity_id=activity_id,
+                        participant_id=participant_id,
+                        direction=direction,
+                        channel='web',
+                        content=content
+                    )
+                    
+                    db.session.add(message)
+            
+            # Combine all participant inputs into a single preference summary
+            if participant_inputs:
+                preference_summary = "\n\n".join(participant_inputs)
+                
+                # Save the summary as a preference
+                planner.save_preference(participant_id, 'preferences', 'summary', preference_summary)
+                
+                # For basic contact info extraction, attempt to find email and name in the inputs
+                for input_text in participant_inputs:
+                    # Try to extract email
+                    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', input_text)
+                    if email_match and not participant.email:
+                        email = email_match.group(0)
+                        participant.email = email
+                        planner.save_preference(participant_id, 'contact', 'email', email)
+                    
+                    # Try to extract name if mentioned
+                    name_patterns = [
+                        r'my name is (\w+)',
+                        r'I am (\w+)',
+                        r"I'm (\w+)",
+                        r'call me (\w+)'
+                    ]
+                    
+                    for pattern in name_patterns:
+                        name_match = re.search(pattern, input_text, re.IGNORECASE)
+                        if name_match and not participant.name:
+                            name = name_match.group(1)
+                            participant.name = name
+                            planner.save_preference(participant_id, 'contact', 'name', name)
+                            break
+            
+            # Commit the messages and any extracted info
+            db.session.commit()
+    else:
+        # Regular structured answers approach - kept for backward compatibility
+        answers = data.get('answers', {})
+        if not answers:
+            current_app.logger.warning(f"No answers submitted for participant {participant_id}")
+            return jsonify({"error": "No answers provided"}), 400
+        
+        # Save answers as preferences
+        planner = ActivityPlanner(activity_id)
+        
+        # Check if we have a new structure with categories already defined
+        if isinstance(answers, dict) and any(key in ['contact', 'activity', 'timing', 'group', 'meals', 'requirements'] for key in answers.keys()):
+            # New structure - iterate through categories
+            for category, prefs in answers.items():
+                if not isinstance(prefs, dict):
                     continue
                     
+                for question_id, answer in prefs.items():
+                    if not answer:  # Skip empty answers
+                        continue
+                        
+                    # Log the preference being saved
+                    current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
+                    
+                    # Save the preference
+                    planner.save_preference(participant_id, category, question_id, answer)
+                    
+                    # Update participant record for special fields
+                    if category == 'contact':
+                        if question_id == 'email':
+                            participant.email = answer
+                        elif question_id == 'name':
+                            participant.name = answer
+                        elif question_id == 'allow_group_text':
+                            participant.allow_group_text = answer
+        else:
+            # Old structure - determine category from question ID
+            for question_id, answer in answers.items():
+                # Determine category based on question ID or batch
+                if question_id in ['email', 'name', 'allow_group_text']:
+                    category = 'contact'
+                elif question_id in ['group_size', 'has_children', 'has_seniors', 'social_level']:
+                    category = 'group'
+                elif question_id in ['preferred_day', 'preferred_time', 'duration']:
+                    category = 'timing'
+                elif question_id in ['activity_type', 'physical_exertion', 'budget_range', 'learning_preference']:
+                    category = 'activity'
+                elif question_id in ['meals_included']:
+                    category = 'meals'
+                elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info', 'direct_input']:
+                    category = 'requirements'
+                else:
+                    category = 'other'
+                    current_app.logger.info(f"Question {question_id} mapped to 'other' category")
+                
                 # Log the preference being saved
                 current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
                 
@@ -516,46 +632,12 @@ def submit_answers(activity_id):
                 planner.save_preference(participant_id, category, question_id, answer)
                 
                 # Update participant record for special fields
-                if category == 'contact':
-                    if question_id == 'email':
-                        participant.email = answer
-                    elif question_id == 'name':
-                        participant.name = answer
-                    elif question_id == 'allow_group_text':
-                        participant.allow_group_text = answer
-    else:
-        # Old structure - determine category from question ID
-        for question_id, answer in answers.items():
-            # Determine category based on question ID or batch
-            if question_id in ['email', 'name', 'allow_group_text']:
-                category = 'contact'
-            elif question_id in ['group_size', 'has_children', 'has_seniors', 'social_level']:
-                category = 'group'
-            elif question_id in ['preferred_day', 'preferred_time', 'duration']:
-                category = 'timing'
-            elif question_id in ['activity_type', 'physical_exertion', 'budget_range', 'learning_preference']:
-                category = 'activity'
-            elif question_id in ['meals_included']:
-                category = 'meals'
-            elif question_id in ['dietary_restrictions', 'accessibility_needs', 'additional_info', 'direct_input']:
-                category = 'requirements'
-            else:
-                category = 'other'
-                current_app.logger.info(f"Question {question_id} mapped to 'other' category")
-            
-            # Log the preference being saved
-            current_app.logger.info(f"Saving preference: {category}.{question_id} = {answer}")
-            
-            # Save the preference
-            planner.save_preference(participant_id, category, question_id, answer)
-            
-            # Update participant record for special fields
-            if question_id == 'email':
-                participant.email = answer
-            elif question_id == 'name':
-                participant.name = answer
-            elif question_id == 'allow_group_text':
-                participant.allow_group_text = answer
+                if question_id == 'email':
+                    participant.email = answer
+                elif question_id == 'name':
+                    participant.name = answer
+                elif question_id == 'allow_group_text':
+                    participant.allow_group_text = answer
     
     # Update participant status
     if is_final:
@@ -658,11 +740,67 @@ def view_plan(activity_id):
     if participant_id:
         participant = Participant.query.get(participant_id)
     
+    # Check if this is the activity creator 
+    is_creator = current_user.is_authenticated and current_user.id == activity.creator_id
+    
+    # Get participant preferences and feedback for the plan view
+    participant_inputs = []
+    planner = ActivityPlanner(activity_id)
+    
+    # If creator, get all participant preferences and feedback
+    if is_creator:
+        # Loop through all participants
+        for p in activity.participants:
+            p_preferences = planner.get_participant_preferences(p.id)
+            preference_summary = None
+            feedback = None
+            
+            # Get preference summary if it exists
+            if p_preferences and 'preferences' in p_preferences and 'summary' in p_preferences['preferences']:
+                preference_summary = p_preferences['preferences']['summary']
+                
+            # Get feedback if it exists
+            if p_preferences and 'feedback' in p_preferences and 'plan_feedback' in p_preferences['feedback']:
+                feedback = p_preferences['feedback']['plan_feedback']
+                
+            # Only add if there's something to show
+            if preference_summary or feedback:
+                participant_inputs.append({
+                    'participant_id': p.id,
+                    'name': p.name or f"Participant {p.id}",
+                    'preferences': preference_summary,
+                    'feedback': feedback
+                })
+    # Otherwise just get this participant's input
+    elif participant:
+        p_preferences = planner.get_participant_preferences(participant.id)
+        preference_summary = None
+        feedback = None
+        
+        # Get preference summary if it exists
+        if p_preferences and 'preferences' in p_preferences and 'summary' in p_preferences['preferences']:
+            preference_summary = p_preferences['preferences']['summary']
+            
+        # Get feedback if it exists
+        if p_preferences and 'feedback' in p_preferences and 'plan_feedback' in p_preferences['feedback']:
+            feedback = p_preferences['feedback']['plan_feedback']
+            
+        # Add this participant's input
+        if preference_summary or feedback:
+            participant_inputs.append({
+                'participant_id': participant.id,
+                'name': participant.name or f"Participant {participant.id}",
+                'preferences': preference_summary,
+                'feedback': feedback
+            })
+    
     return render_template(
         'plan.html',
         activity=activity,
         plan=plan,
-        participant=participant
+        participant=participant,
+        participant_inputs=participant_inputs,
+        is_creator=is_creator
     )
 
 @main_bp.route('/activity/<activity_id>/feedback', methods=['GET', 'POST'])
@@ -1034,34 +1172,85 @@ def manage_feedback(activity_id):
     if not plan:
         flash("No plan has been generated yet for this activity.", "warning")
         return redirect(url_for('main.activity_detail', activity_id=activity_id))
+        
+    # Make sure plan fields are populated from activity if they are empty
+    if not plan.scheduled_date and activity.proposed_date:
+        plan.scheduled_date = activity.proposed_date
+        
+    if not plan.time_window and activity.time_window:
+        plan.time_window = activity.time_window
+        
+    if not plan.start_time and activity.start_time:
+        plan.start_time = activity.start_time
+        
+    if not plan.location_address and activity.location_address:
+        plan.location_address = activity.location_address
+        
+    db.session.commit()
     
     # Get all feedback for this activity
     feedback_list = Preference.get_feedback_for_activity(activity_id)
     
-    # Log what feedback we found for debugging
-    current_app.logger.info(f"Found {len(feedback_list)} feedback entries for activity {activity_id}")
-    for feedback in feedback_list:
-        current_app.logger.info(f"  - Feedback from {feedback['participant_name']}: {feedback['feedback'][:50]}...")
+    # Get participant preferences and merge them with feedback
+    planner = ActivityPlanner(activity_id)
+    combined_feedback_list = []
     
-    # Get all feedback preferences directly for debugging
-    all_feedback_prefs = Preference.query.filter_by(
-        activity_id=activity_id, 
-        category='feedback'
-    ).all()
-    current_app.logger.info(f"Direct query found {len(all_feedback_prefs)} feedback preferences")
-    for pref in all_feedback_prefs:
-        current_app.logger.info(f"  - Preference {pref.id}: category={pref.category}, key={pref.key}, value={pref.value[:50] if pref.value else None}...")
+    # Process participants to get both preferences and feedback
+    for participant in activity.participants:
+        p_preferences = planner.get_participant_preferences(participant.id)
+        preference_summary = None
+        feedback = None
+        
+        # Get preference summary if it exists
+        if p_preferences and 'preferences' in p_preferences and 'summary' in p_preferences['preferences']:
+            preference_summary = p_preferences['preferences']['summary']
+            
+        # Get feedback if it exists
+        if p_preferences and 'feedback' in p_preferences and 'plan_feedback' in p_preferences['feedback']:
+            feedback = p_preferences['feedback']['plan_feedback']
+            
+        # Only add if there's something to display
+        if preference_summary or feedback:
+            combined_text = ""
+            
+            # Add preferences first
+            if preference_summary:
+                combined_text += preference_summary
+                
+            # Add separator and feedback if it exists
+            if preference_summary and feedback:
+                combined_text += "\n\n=====================\nFEEDBACK ON PLAN:\n=====================\n"
+                
+            # Add feedback
+            if feedback:
+                combined_text += feedback
+                
+            # Add to combined list
+            combined_feedback_list.append({
+                'id': participant.id,
+                'participant_id': participant.id,
+                'participant_name': participant.name or f"Participant {participant.id}",
+                'feedback': combined_text,
+                'created_at': participant.updated_at.strftime('%Y-%m-%d %H:%M') if participant.updated_at else ''
+            })
+    
+    # Log what feedback we found for debugging
+    current_app.logger.info(f"Found {len(combined_feedback_list)} combined feedback entries for activity {activity_id}")
     
     # Get AI suggestions if available
     ai_suggestions = AISuggestion.query.filter_by(
         plan_id=plan.id
     ).order_by(AISuggestion.created_at.desc()).first()
     
+    # Format the suggestions for natural language display if they exist
+    if ai_suggestions:
+        current_app.logger.info(f"Found AI suggestions for plan {plan.id}: {ai_suggestions.id}")
+    
     return render_template(
         'feedback_management.html',
         activity=activity,
         plan=plan,
-        feedback_list=feedback_list,
+        feedback_list=combined_feedback_list,
         ai_suggestions=ai_suggestions
     )
 

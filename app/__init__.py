@@ -86,6 +86,16 @@ def create_app(config=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(auth_bp)
     app.register_blueprint(ai_nlp_bp, url_prefix='/api/ai')
+    
+    # Add custom Jinja2 filters
+    from markupsafe import Markup, escape
+    
+    @app.template_filter('nl2br')
+    def nl2br_filter(s):
+        """Convert newlines to <br> tags for display in HTML."""
+        if not s:
+            return ""
+        return Markup(escape(s).replace('\n', '<br>\n'))
 
     # Create database tables if needed (development only)
     if app.config['ENV'] == 'development':
