@@ -260,7 +260,7 @@ class EmailService:
             html_content = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2>Password Reset Request</h2>
-                <p>Hello {user.name or user.username},</p>
+                <p>Hello {user.name or user.email},</p>
                 <p>You requested a password reset for your account. Please click the link below to reset your password:</p>
                 <p style="margin: 20px 0;">
                     <a href="{reset_url}" 

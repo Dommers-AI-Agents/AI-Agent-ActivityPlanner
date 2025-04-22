@@ -13,14 +13,14 @@ def login():
         return redirect(url_for('main.index'))
         
     if request.method == 'POST':
-        username = request.form.get('username')
+        email = request.form.get('email')
         password = request.form.get('password')
         remember_me = 'remember_me' in request.form
         
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(email=email).first()
         
         if user is None or not user.check_password(password):
-            flash('Invalid username or password', 'error')
+            flash('Invalid email or password', 'error')
             return redirect(url_for('auth.login'))
             
         login_user(user, remember=remember_me)
@@ -44,20 +44,15 @@ def register():
         return redirect(url_for('main.index'))
         
     if request.method == 'POST':
-        username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
         name = request.form.get('name')
         
-        if User.query.filter_by(username=username).first():
-            flash('Username already taken', 'error')
-            return redirect(url_for('auth.register'))
-            
         if User.query.filter_by(email=email).first():
             flash('Email already registered', 'error')
             return redirect(url_for('auth.register'))
             
-        user = User(username=username, email=email, name=name)
+        user = User(email=email, name=name)
         user.set_password(password)
         
         db.session.add(user)
