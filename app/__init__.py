@@ -26,12 +26,31 @@ def create_app(config=None):
     # Setup logging
     if not os.path.exists('logs'):
         os.mkdir('logs')
-    file_handler = RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
+    
+    # Reduced backup count from 10 to 5 and increased max bytes to reduce rotations
+    file_handler = RotatingFileHandler(
+        'logs/app.log', 
+        maxBytes=1024000,  # Increased to ~1MB per file
+        backupCount=5      # Reduced to 5 backup files
+    )
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
     ))
     file_handler.setLevel(logging.INFO)
+    
+    # Add a stream handler to also log to console
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s'
+    ))
+    console_handler.setLevel(logging.INFO)
+    
+    # Clear existing handlers to avoid duplicates
+    app.logger.handlers = []
+    
+    # Add both handlers
     app.logger.addHandler(file_handler)
+    app.logger.addHandler(console_handler)
     app.logger.setLevel(logging.INFO)
     app.logger.info('AI Group Planner startup')
     
