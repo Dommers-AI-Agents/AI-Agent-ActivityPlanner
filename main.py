@@ -8,6 +8,7 @@ from app.services.sms_service import sms_service
 from app.services.email_service import email_service
 from app import db
 import os
+import argparse
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -28,16 +29,44 @@ def get_app():
     return app
 
 if __name__ == '__main__':
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run the Activity Planner application')
+    parser.add_argument('--dev', action='store_true', help='Run in development mode on localhost')
+    args = parser.parse_args()
+    
     # Get port from environment variable or default to 5000
     port = int(os.environ.get('PORT', 5000))
 
-    cert_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare.pem')
-    key_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare-key.pem')
+    # Configure SSL certificates paths
+    prod_cert_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare.pem')
+    prod_key_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare-key.pem')
+    dev_cert_path = os.path.join(os.path.dirname(__file__), 'ssl/dev/dev-cert.pem')
+    dev_key_path = os.path.join(os.path.dirname(__file__), 'ssl/dev/dev-key.pem')
+    
+    if args.dev:
+        # Development mode - run on localhost with development SSL certificates
+        print("Running in DEVELOPMENT mode on localhost")
+        os.environ['FLASK_ENV'] = 'development'
         
-    # Run the application
-    app.run(
-        host='0.0.0.0', port=port,
-        ssl_context=(cert_path, key_path)
+        # Use development SSL certificates
+        if os.path.exists(dev_cert_path) and os.path.exists(dev_key_path):
+            print(f"Using development SSL certificates")
+            app.run(
+                host='127.0.0.1', 
+                port=port,
+                debug=True,
+                ssl_context=(dev_cert_path, dev_key_path)
+            )
+        else:
+            print("Development SSL certificates not found. Please run the certificate generation script first.")
+            exit(1)
+    else:
+        # Production mode - run with production SSL on all interfaces
+        print("Running in PRODUCTION mode")
+        app.run(
+            host='0.0.0.0', 
+            port=port,
+            ssl_context=(prod_cert_path, prod_key_path)
         )
 
 @main_bp.route('/')
