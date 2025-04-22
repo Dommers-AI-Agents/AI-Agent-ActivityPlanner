@@ -58,7 +58,7 @@
                         </div>
                         <div class="col-md-4 text-end">
                             <button id="analyze-feedback-btn" class="btn btn-primary">
-                                <i class="fas fa-robot"></i> Analyze with Claude
+                                <i class="fas fa-robot"></i> Generate Alternative Plan
                             </button>
                         </div>
                     </div>
@@ -87,29 +87,91 @@
             <!-- Claude AI Suggestions Section -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h4 class="mb-0">Claude AI Suggestions</h4>
+                    <h4 class="mb-0">Claude's Alternative Plan Proposal</h4>
                 </div>
                 <div class="card-body">
                     <div id="claude-suggestions-container">
                         {% if ai_suggestions %}
                             <div class="card border-success">
                                 <div class="card-header bg-success text-white">
-                                    <h5 class="mb-0">Claude's Recommended Changes</h5>
+                                    <h5 class="mb-0">Proposed Alternative Plan</h5>
                                 </div>
                                 <div class="card-body">
-                                    <h6 class="card-subtitle mb-3">Claude's Analysis:</h6>
+                                    <h6 class="card-subtitle mb-3">Analysis of Feedback:</h6>
                                     <div class="p-3 bg-light rounded mb-4">
                                         {{ ai_suggestions.summary|nl2br }}
                                     </div>
                                     
                                     {% if ai_suggestions.changes_list %}
-                                    <h6 class="card-subtitle mb-3">Specific Suggestions:</h6>
+                                    <h6 class="card-subtitle mb-3">Proposed Changes:</h6>
                                     <div class="suggested-changes p-3 bg-light rounded mb-4">
-                                        <ol class="mb-0">
-                                            {% for change in ai_suggestions.changes_list %}
-                                            <li class="mb-2">{{ change|nl2br }}</li>
-                                            {% endfor %}
-                                        </ol>
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> Claude has analyzed the participant feedback and proposed a complete alternative plan that addresses their needs. Review the changes below and apply them if they address the feedback appropriately.
+                                        </div>
+                                        
+                                        {% for change in ai_suggestions.changes_list %}
+                                            {% if change.startswith('Change title to:') %}
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary text-white">
+                                                        <strong>Title Change</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change|replace('Change title to:', '')|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% elif change.startswith('Change location to:') %}
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary text-white">
+                                                        <strong>Location Change</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change|replace('Change location to:', '')|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% elif change.startswith('Change timing to:') %}
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary text-white">
+                                                        <strong>Time/Date Change</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change|replace('Change timing to:', '')|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% elif change.startswith('Replace description with:') %}
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary text-white">
+                                                        <strong>Updated Plan Description</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change|replace('Replace description with:', '')|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% elif change.startswith('New proposed schedule:') %}
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary text-white">
+                                                        <strong>Updated Schedule</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change|replace('New proposed schedule:', '')|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% elif change.startswith('Alternative') %}
+                                                <div class="card mb-3 border-info">
+                                                    <div class="card-header bg-info text-white">
+                                                        <strong>{{ change.split(':', 1)[0] }}</strong>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        {{ change.split(':', 1)[1]|nl2br if ':' in change else change|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% else %}
+                                                <div class="card mb-3">
+                                                    <div class="card-body">
+                                                        {{ change|nl2br }}
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
                                     </div>
                                     {% endif %}
                                     
@@ -118,10 +180,10 @@
                                         <form action="{{ url_for('main.apply_ai_suggestions', activity_id=activity.id, plan_id=plan.id) }}" method="POST">
                                             <input type="hidden" name="suggestion_id" value="{{ ai_suggestions.id }}">
                                             <button type="submit" class="btn btn-success btn-lg">
-                                                <i class="fas fa-check"></i> Apply These Changes
+                                                <i class="fas fa-check"></i> Apply This Alternative Plan
                                             </button>
                                             <p class="text-muted mt-2">
-                                                <small>This will create a new version of the plan with Claude's suggested changes</small>
+                                                <small>This will create a new version of the plan with all the changes shown above</small>
                                             </p>
                                         </form>
                                     </div>
@@ -129,13 +191,17 @@
                             </div>
                         {% else %}
                             <div id="suggestions-placeholder" class="text-center py-4">
-                                <p class="text-muted">Click "Analyze with Claude" to get AI-powered suggestions based on participant feedback.</p>
+                                <p class="text-muted">Click "Generate Alternative Plan" to have Claude analyze the feedback and create a complete new plan option.</p>
+                                
+                                <div class="alert alert-info my-3">
+                                    <i class="fas fa-info-circle"></i> Based on feedback from participants, Claude will generate a comprehensive alternative plan that addresses their needs. For example, if someone mentions bringing a dog on a hike, Claude will suggest dog-friendly trail alternatives.
+                                </div>
                                 
                                 <div id="analyzing-indicator" style="display: none;">
                                     <div class="spinner-border text-primary" role="status">
                                         <span class="visually-hidden">Loading...</span>
                                     </div>
-                                    <p class="mt-2">Analyzing feedback with Claude...</p>
+                                    <p class="mt-2">Generating alternative plan with Claude...</p>
                                 </div>
                             </div>
                         {% endif %}
