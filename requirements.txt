@@ -3,7 +3,9 @@ flask==2.3.2
 flask-sqlalchemy==3.0.5
 flask-migrate==4.0.4
 flask-cors==4.0.0
+flask-login==0.6.2
 gunicorn==21.2.0
+werkzeug==2.3.6
 
 # Database
 sqlalchemy==2.0.19

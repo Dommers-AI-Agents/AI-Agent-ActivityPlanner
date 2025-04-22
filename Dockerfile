@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=main.py
 
 # Expose port
-EXPOSE 5000
+EXPOSE 443
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+# Run the application with SSL
+CMD ["gunicorn", "--bind", "0.0.0.0:443", "--certfile", "/app/ssl/cloudflare.pem", "--keyfile", "/app/ssl/cloudflare-key.pem", "main:app"]

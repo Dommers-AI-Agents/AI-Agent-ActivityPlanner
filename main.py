@@ -31,8 +31,8 @@ if __name__ == '__main__':
     # Get port from environment variable or default to 5000
     port = int(os.environ.get('PORT', 5000))
 
-    cert_path = os.path.join(os.path.dirname(__file__), 'localhost+2.pem')
-    key_path = os.path.join(os.path.dirname(__file__), 'localhost+2-key.pem')
+    cert_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare.pem')
+    key_path = os.path.join(os.path.dirname(__file__), 'ssl/cloudflare-key.pem')
         
     # Run the application
     app.run(

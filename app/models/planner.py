@@ -1313,7 +1313,7 @@ class ActivityPlanner:
         Returns:
             Plan: The updated plan.
         """
-        from app.models.database import Plan
+        from app.models.database import Plan, Activity
         import datetime
         
         # Get the plan
@@ -1321,37 +1321,45 @@ class ActivityPlanner:
         if not plan:
             raise ValueError(f"Plan with ID {plan_id} not found")
         
-        # Create a new plan with updated data
-        new_plan = Plan(
-            activity_id=self.activity_id,
-            title=updated_data.get('plan_title', plan.title),
-            description=updated_data.get('plan_description', plan.description),
-            schedule=plan.schedule,  # Keep original schedule data
-            status='revised'
-        )
+        # Update the plan directly instead of creating a new one
+        plan.title = updated_data.get('plan_title', plan.title)
+        plan.description = updated_data.get('plan_description', plan.description)
         
         # Handle date
         if 'scheduled_date' in updated_data and updated_data['scheduled_date']:
             try:
-                new_plan.scheduled_date = datetime.datetime.strptime(
+                plan.scheduled_date = datetime.datetime.strptime(
                     updated_data['scheduled_date'], '%Y-%m-%d'
                 ).date()
             except Exception as e:
-                # Leave as None if there's an error
+                # Leave as is if there's an error
                 current_app.logger.error(f"Error parsing date: {str(e)}")
         
-        # Add other fields
-        new_plan.time_window = updated_data.get('time_window', plan.time_window)
-        new_plan.start_time = updated_data.get('start_time', plan.start_time)
-        new_plan.location_address = updated_data.get('location_address', plan.location_address)
+        # Update other fields
+        plan.time_window = updated_data.get('time_window', plan.time_window)
+        plan.start_time = updated_data.get('start_time', plan.start_time)
+        plan.location_address = updated_data.get('location_address', plan.location_address)
         
-        # Add note about manual update
-        new_plan.description += "\n\nThis plan was manually updated by the activity creator based on participant feedback."
+        # Update the activity with the same details
+        activity = Activity.query.get(self.activity_id)
+        if activity:
+            activity.proposed_date = plan.scheduled_date
+            activity.time_window = plan.time_window
+            activity.start_time = plan.start_time
+            activity.location_address = plan.location_address
         
-        db.session.add(new_plan)
+        # Add note about the update if not already present
+        update_note = "\n\nThis plan was manually updated by the activity creator based on participant feedback."
+        if update_note not in plan.description:
+            plan.description += update_note
+        
+        # Update status to revised if it was a draft
+        if plan.status == 'draft':
+            plan.status = 'revised'
+        
         db.session.commit()
         
-        return new_plan
+        return plan
     
     def request_plan_approval(self, plan_id):
         """Request approval from all participants for a plan.
