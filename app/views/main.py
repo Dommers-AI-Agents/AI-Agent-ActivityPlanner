@@ -942,7 +942,7 @@ def process_conversation_input(activity_id):
     flash("Plan generated based on your input!", "success")
     return redirect(url_for('main.view_plan', activity_id=activity_id))
 
-@main_bp.route('/activity/<activity_id>/finalize')
+@main_bp.route('/activity/<activity_id>/finalize', methods=['GET', 'POST'])
 def finalize_plan(activity_id):
     """Finalize the activity plan."""
     # Get the activity
@@ -1215,7 +1215,9 @@ def manage_feedback(activity_id):
             
             # Add preferences first
             if preference_summary:
-                combined_text += preference_summary
+                # Clean HTML tags if present
+                clean_preference = planner._clean_html_tags(preference_summary)
+                combined_text += clean_preference
                 
             # Add separator and feedback if it exists
             if preference_summary and feedback:
@@ -1223,7 +1225,9 @@ def manage_feedback(activity_id):
                 
             # Add feedback
             if feedback:
-                combined_text += feedback
+                # Clean HTML tags if present
+                clean_feedback = planner._clean_html_tags(feedback)
+                combined_text += clean_feedback
                 
             # Add to combined list
             combined_feedback_list.append({

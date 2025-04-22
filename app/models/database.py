@@ -211,12 +211,21 @@ class Preference(db.Model):
             # Get participant info
             participant = Participant.query.get(pref.participant_id) if pref.participant_id else None
             
+            # Clean HTML tags from feedback value
+            feedback_value = pref.value
+            if feedback_value and isinstance(feedback_value, str):
+                # Replace <br> tags with newlines
+                import re
+                feedback_value = re.sub(r'<br\s*/?>', '\n', feedback_value)
+                # Remove other HTML tags
+                feedback_value = re.sub(r'<[^>]*>', '', feedback_value)
+            
             # Create feedback entry
             feedback_entry = {
                 'id': pref.id,
                 'participant_id': pref.participant_id,
                 'participant_name': participant.name if participant else 'Activity Creator',
-                'feedback': pref.value,
+                'feedback': feedback_value,
                 'created_at': pref.created_at.strftime('%Y-%m-%d %H:%M')
             }
             

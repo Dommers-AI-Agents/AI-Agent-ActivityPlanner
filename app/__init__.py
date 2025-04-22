@@ -95,6 +95,12 @@ def create_app(config=None):
         """Convert newlines to <br> tags for display in HTML."""
         if not s:
             return ""
+        
+        # Replace <br> and <br /> with newlines first, before escaping
+        if isinstance(s, str):
+            s = s.replace('<br>', '\n').replace('<br />', '\n').replace('<br/>', '\n')
+        
+        # Then escape and convert newlines to <br> tags
         return Markup(escape(s).replace('\n', '<br>\n'))
 
     # Create database tables if needed (development only)

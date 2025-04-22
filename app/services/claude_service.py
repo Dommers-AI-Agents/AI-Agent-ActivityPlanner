@@ -5,6 +5,9 @@ This service connects to the Anthropic Claude API to process natural language in
 import os
 import json
 import requests
+import random
+import time
+import traceback
 from flask import current_app
 import logging
 
@@ -421,30 +424,73 @@ class ClaudeService:
         current_app.logger.info(f"API Request headers: {headers}")
         current_app.logger.info(f"API Request body: {json.dumps(data)[:500]}...")
         
-        try:
-            current_app.logger.info("Sending request to Claude API...")
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=data,
-                timeout=30  # 30 second timeout
-            )
+        # Import needed modules for retry logic
+        
+        # Retry with exponential backoff
+        max_retries = 3
+        retry_count = 0
+        while retry_count <= max_retries:
+            try:
+                current_app.logger.info(f"Sending request to Claude API (attempt {retry_count + 1}/{max_retries + 1})...")
+                response = requests.post(
+                    self.api_url,
+                    headers=headers,
+                    json=data,
+                    timeout=60  # Increased timeout to 60 seconds
+                )
+                
+                current_app.logger.info(f"Claude API response status: {response.status_code}")
+                
+                # Handle rate limiting or server overload (status 429 or 529)
+                if response.status_code in (429, 529):
+                    retry_count += 1
+                    if retry_count <= max_retries:
+                        # Calculate exponential backoff with jitter
+                        wait_time = min(60, (2 ** retry_count) + random.uniform(0, 1))
+                        current_app.logger.warning(f"API rate limited or overloaded. Retrying in {wait_time:.2f} seconds...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        current_app.logger.error(f"Max retries exceeded with status {response.status_code}: {response.text}")
+                        raise Exception(f"API request failed with status {response.status_code} after {max_retries} retries: {response.text}")
+                
+                # Handle other error status codes
+                elif response.status_code != 200:
+                    current_app.logger.error(f"Claude API request failed with status {response.status_code}: {response.text}")
+                    raise Exception(f"API request failed with status {response.status_code}: {response.text}")
+                
+                # Parse and return successful response
+                response_data = response.json()
+                current_app.logger.info(f"Claude API response: {json.dumps(response_data)[:500]}...")
+                return response_data
             
-            current_app.logger.info(f"Claude API response status: {response.status_code}")
+            except requests.exceptions.Timeout:
+                retry_count += 1
+                if retry_count <= max_retries:
+                    # Calculate exponential backoff with jitter
+                    wait_time = min(60, (2 ** retry_count) + random.uniform(0, 1))
+                    current_app.logger.warning(f"Request timed out. Retrying in {wait_time:.2f} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    current_app.logger.error(f"Max retries exceeded due to timeout after {max_retries} attempts.")
+                    raise
             
-            if response.status_code != 200:
-                current_app.logger.error(f"Claude API request failed with status {response.status_code}: {response.text}")
-                raise Exception(f"API request failed with status {response.status_code}: {response.text}")
-            
-            response_data = response.json()
-            current_app.logger.info(f"Claude API response: {json.dumps(response_data)[:500]}...")
-            
-            return response_data
-            
-        except Exception as e:
-            current_app.logger.error(f"Error calling Claude API: {str(e)}")
-            current_app.logger.error(traceback.format_exc())
-            raise
+            except requests.exceptions.RequestException as e:
+                # For other request exceptions, retry with backoff
+                retry_count += 1
+                if retry_count <= max_retries:
+                    wait_time = min(60, (2 ** retry_count) + random.uniform(0, 1))
+                    current_app.logger.warning(f"Request error: {str(e)}. Retrying in {wait_time:.2f} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    current_app.logger.error(f"Max retries exceeded due to request error after {max_retries} attempts.")
+                    current_app.logger.error(traceback.format_exc())
+                    raise
+                    
+            except Exception as e:
+                current_app.logger.error(f"Error calling Claude API: {str(e)}")
+                current_app.logger.error(traceback.format_exc())
+                raise
             
     # Mock response generators for when API key is not available
     def _mock_creator_response(self, message):

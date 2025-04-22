@@ -5,7 +5,7 @@ import json
 import re
 from datetime import datetime, timedelta
 
-from app.models.database import Activity, Participant, Preference, Plan
+from app.models.database import Activity, Participant, Preference, Plan, AISuggestion
 from app import db
 
 class ActivityPlanner:
@@ -18,6 +18,19 @@ class ActivityPlanner:
         
         if activity_id:
             self.load_activity()
+
+    def _clean_html_tags(self, text):
+        """Convert HTML <br> tags to newlines and clean up other HTML."""
+        if not text or not isinstance(text, str):
+            return text
+            
+        # Replace <br>, <br/>, <br /> with newlines
+        text = re.sub(r'<br\s*/?>', '\n', text)
+        
+        # Remove other HTML tags if present
+        text = re.sub(r'<[^>]*>', '', text)
+        
+        return text
     
     def load_activity(self):
         """Load activity data from the database."""
@@ -1275,11 +1288,25 @@ class ActivityPlanner:
                 # Parse the JSON
                 parsed_response = json.loads(clean_response)
                 
-                # Extract the key components
-                analysis = parsed_response.get("analysis", "")
+                # Extract the key components and clean HTML tags
+                analysis = self._clean_html_tags(parsed_response.get("analysis", ""))
                 proposed_changes = parsed_response.get("proposed_changes", {})
-                rationale = parsed_response.get("rationale", "")
+                
+                # Clean description if it exists
+                if proposed_changes.get("description"):
+                    proposed_changes["description"] = self._clean_html_tags(proposed_changes["description"])
+                    
+                rationale = self._clean_html_tags(parsed_response.get("rationale", ""))
                 alternatives = parsed_response.get("alternatives", [])
+                
+                # Clean alternative descriptions
+                for alt in alternatives:
+                    if alt.get("description"):
+                        alt["description"] = self._clean_html_tags(alt["description"])
+                    if alt.get("pros"):
+                        alt["pros"] = self._clean_html_tags(alt["pros"])
+                    if alt.get("cons"):
+                        alt["cons"] = self._clean_html_tags(alt["cons"])
                 
                 # Format the summary from analysis and rationale
                 summary = analysis
