@@ -269,12 +269,20 @@ def google_callback():
         
         # Redirect to next URL or default
         next_url = session.pop('oauth_next', None)
-        if next_url:
-            return redirect(next_url)
         
-        # Check if there's a pending activity
-        if session.get('activity_pending'):
-            return redirect(url_for('main.create_activity'))
+        # Check if there's a pending activity or if we're returning to create-activity page
+        if session.get('activity_pending') or (next_url and 'create-activity' in next_url):
+            # Set the same flags as used in regular login/registration
+            session['login_successful'] = True
+            session['restore_activity_data'] = True
+            current_app.logger.info("Setting restore_activity_data flag for user after Google OAuth login")
+            
+            if next_url:
+                return redirect(next_url)
+            else:
+                return redirect(url_for('main.create_activity'))
+        elif next_url:
+            return redirect(next_url)
         
         return redirect(url_for('main.index'))
     
@@ -378,12 +386,20 @@ def apple_callback():
             
             # Redirect to next URL or default
             next_url = session.pop('oauth_next', None)
-            if next_url:
-                return redirect(next_url)
             
-            # Check if there's a pending activity
-            if session.get('activity_pending'):
-                return redirect(url_for('main.create_activity'))
+            # Check if there's a pending activity or if we're returning to create-activity page
+            if session.get('activity_pending') or (next_url and 'create-activity' in next_url):
+                # Set the same flags as used in regular login/registration
+                session['login_successful'] = True
+                session['restore_activity_data'] = True
+                current_app.logger.info("Setting restore_activity_data flag for user after OAuth login")
+                
+                if next_url:
+                    return redirect(next_url)
+                else:
+                    return redirect(url_for('main.create_activity'))
+            elif next_url:
+                return redirect(next_url)
             
             return redirect(url_for('main.index'))
         
