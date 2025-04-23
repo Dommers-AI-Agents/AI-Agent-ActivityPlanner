@@ -8,7 +8,16 @@
         <div class="col-lg-6">
             <div class="form-card">
                 <h2>Register</h2>
+                {% if redirect_url %}
+                <div class="alert alert-info">
+                    Please register to continue with your activity planning
+                </div>
+                {% endif %}
+                
                 <form method="POST" action="{{ url_for('auth.register') }}">
+                    {% if redirect_url %}
+                    <input type="hidden" name="next_url" value="{{ redirect_url }}">
+                    {% endif %}
                     <div class="mb-3">
                         <label for="name" class="form-label">Name</label>
                         <input type="text" class="form-control" id="name" name="name" required>
@@ -25,6 +34,20 @@
                         <button type="submit" class="btn btn-primary">Register</button>
                     </div>
                 </form>
+                
+                <div class="text-center my-3">
+                    <p>- OR -</p>
+                </div>
+                
+                <div class="d-grid gap-2 mb-3">
+                    <a href="{{ url_for('auth.google_login', next=redirect_url) }}" class="btn btn-outline-danger">
+                        <i class="fab fa-google me-2"></i> Continue with Google
+                    </a>
+                    <a href="{{ url_for('auth.apple_login', next=redirect_url) }}" class="btn btn-outline-dark">
+                        <i class="fab fa-apple me-2"></i> Continue with Apple
+                    </a>
+                </div>
+                
                 <div class="text-center mt-3">
                     <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login</a></p>
                 </div>

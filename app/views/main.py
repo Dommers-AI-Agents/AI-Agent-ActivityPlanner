@@ -30,10 +30,21 @@ def dashboard():
     return render_template('dashboard.html', activities=activities)
 
 @main_bp.route('/create-activity', methods=['GET', 'POST'])
-@login_required
 def create_activity():
     """Create a new activity and invite participants."""
     if request.method == 'POST':
+        # Check if user is logged in, if not, save form data in session and redirect to login
+        if not current_user.is_authenticated:
+            # Store all form data in the session
+            session['activity_form_data'] = request.form.to_dict(flat=False)
+            session['activity_pending'] = True
+            
+            # Redirect to login page with a special flag
+            flash("Please log in or register to continue with your activity planning", "info")
+            return redirect(url_for('auth.login', next=url_for('main.create_activity')))
+        
+        # This is now a strict server-side check to enforce login
+        
         # Process form data
         activity_name = request.form.get('activity_name')
         organizer_name = request.form.get('organizer_name')
@@ -164,11 +175,33 @@ def create_activity():
             # Create an initial plan based on the conversation
             planner.create_plan_from_description(activity_description, activity_type)
             
+        # Clear pending activity session data if it exists
+        if 'activity_form_data' in session:
+            session.pop('activity_form_data', None)
+        if 'activity_pending' in session:
+            session.pop('activity_pending', None)
+            
         # Redirect to participants page - changed flow as requested
         return redirect(url_for('main.activity_detail', activity_id=activity.id))
     
+    # Check if there's pending activity data in the session (after login)
+    auto_submit = False
+    restore_data = False
+    if current_user.is_authenticated:
+        if session.get('login_successful'):
+            # User just logged in, we should auto-submit the form if requested
+            auto_submit = True
+            session.pop('login_successful', None)
+            flash("You're now logged in. Continuing with activity creation...", "success")
+        
+        if session.get('restore_activity_data'):
+            # We need to restore form data from session storage
+            restore_data = True
+            session.pop('restore_activity_data', None)
+            flash("Your activity data has been restored. Please click 'Invite Participants' to continue.", "success")
+    
     # Show the create activity form
-    return render_template('create_activity.html')
+    return render_template('create_activity.html', auto_submit=auto_submit, restore_data=restore_data)
 
 @main_bp.route('/activity/<activity_id>/resend-invitation/<participant_id>', methods=['POST'])
 @login_required

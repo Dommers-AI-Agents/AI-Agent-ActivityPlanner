@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Set up event listeners
   setupEventListeners();
+  
+  // Handle form restoration after login
+  restoreFormDataAfterLogin();
 });
 
 /**
@@ -506,5 +509,179 @@ function finalizePlan() {
       finalizeBtn.disabled = false;
       finalizeBtn.innerHTML = 'Finalize Plan';
     }
+  }
+}
+
+/**
+ * Restore form data after login
+ */
+function restoreFormDataAfterLogin() {
+  // Check if we're on the create activity page
+  const activityForm = document.getElementById('activity-form');
+  if (!activityForm) return;
+  
+  // Check if we have form data in sessionStorage
+  const storedFormData = sessionStorage.getItem('activity_form_data');
+  
+  // Check if we need to restore data (either from the restore flag or if we have stored data)
+  const shouldRestore = document.getElementById('restore_data_after_login') && 
+                        document.getElementById('restore_data_after_login').value === 'true';
+  
+  if (!storedFormData && !shouldRestore) return;
+  
+  // If the flag is set but no data is found, show a message
+  if (shouldRestore && !storedFormData) {
+    console.log('Restore flag set but no form data found in sessionStorage');
+    return;
+  }
+  
+  console.log('Found stored form data, restoring...');
+  
+  try {
+    // Parse the stored data and check if it's in the new format with timestamp
+    const parsedData = JSON.parse(storedFormData);
+    
+    // Check if we have the new structured format or old direct format
+    const formData = parsedData.formData || parsedData;
+    
+    // Check for expiration - 24 hour expiry
+    const timestamp = parsedData.timestamp || 0;
+    const now = new Date().getTime();
+    const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    
+    if (timestamp && (now - timestamp > MAX_AGE)) {
+      console.log('Stored form data is too old (>24h), discarding');
+      sessionStorage.removeItem('activity_form_data');
+      return;
+    }
+    
+    console.log('Successfully parsed form data:', formData);
+    
+    // Fill in the form fields
+    for (const [key, value] of Object.entries(formData)) {
+      // Handle arrays (like participant_phone, participant_email, etc.)
+      if (Array.isArray(value)) {
+        // For participant fields, we need to add the right number of participant entries
+        if (key.startsWith('participant_')) {
+          const participantsContainer = document.getElementById('participants-container');
+          if (participantsContainer) {
+            // Clear existing participants
+            participantsContainer.innerHTML = '';
+            
+            // Get all participant data fields
+            const participantPhones = formData['participant_phone'] || [];
+            const participantEmails = formData['participant_email'] || [];
+            const participantNames = formData['participant_name'] || [];
+            
+            // Add participant entries for each phone number
+            for (let i = 0; i < participantPhones.length; i++) {
+              addParticipantField();
+              
+              // Get the newly added fields
+              const entries = participantsContainer.querySelectorAll('.participant-entry');
+              const lastEntry = entries[entries.length - 1];
+              
+              if (lastEntry) {
+                // Set the values
+                if (participantPhones[i]) {
+                  lastEntry.querySelector('input[name="participant_phone"]').value = participantPhones[i];
+                }
+                
+                if (i < participantEmails.length && participantEmails[i]) {
+                  lastEntry.querySelector('input[name="participant_email"]').value = participantEmails[i];
+                }
+                
+                if (i < participantNames.length && participantNames[i]) {
+                  lastEntry.querySelector('input[name="participant_name"]').value = participantNames[i];
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Handle regular form fields
+        const field = activityForm.querySelector(`[name="${key}"]`);
+        if (field) {
+          field.value = value;
+        }
+      }
+    }
+    
+    // Add a visual indicator that the form was restored
+    if (shouldRestore) {
+      const formIndicator = document.createElement('div');
+      formIndicator.className = 'alert alert-success mb-4';
+      formIndicator.innerHTML = '<strong>Your activity information has been restored.</strong> Please review your information and click "Invite Participants" to continue.';
+      activityForm.prepend(formIndicator);
+      
+      // Add a highlight to the Invite Participants button
+      const inviteBtn = document.getElementById('invite-btn');
+      if (inviteBtn) {
+        inviteBtn.classList.add('btn-pulse');
+        
+        // Add the pulse animation style if not already present
+        if (!document.getElementById('btn-pulse-style')) {
+          const style = document.createElement('style');
+          style.id = 'btn-pulse-style';
+          style.textContent = `
+            @keyframes btnPulse {
+              0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7); }
+              70% { box-shadow: 0 0 0 10px rgba(13, 110, 253, 0); }
+              100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+            }
+            
+            .btn-pulse {
+              animation: btnPulse 1.5s infinite;
+              position: relative;
+              box-shadow: 0 0 0 0 rgba(13, 110, 253, 1);
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      }
+      
+      // Scroll to top of form
+      activityForm.scrollIntoView({ behavior: 'smooth' });
+      
+      // Highlight important fields
+      const importantFields = ['activity_name', 'organizer_name', 'organizer_phone', 'organizer_email'];
+      importantFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field && field.value) {
+          field.classList.add('restored-field');
+        }
+      });
+      
+      // Add style for restored fields if not already there
+      if (!document.getElementById('restored-field-style')) {
+        const style = document.createElement('style');
+        style.id = 'restored-field-style';
+        style.textContent = `
+          @keyframes highlightRestored {
+            0% { background-color: rgba(25, 135, 84, 0.1); }
+            50% { background-color: rgba(25, 135, 84, 0.2); }
+            100% { background-color: transparent; }
+          }
+          
+          .restored-field {
+            animation: highlightRestored 2s ease-in-out;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+    
+    // Keep the data in sessionStorage for now unless auto-submitting
+    if (document.getElementById('auto_submit_after_login') && 
+        document.getElementById('auto_submit_after_login').value === 'true') {
+      // Auto-submit the form
+      console.log('Auto-submitting form after login');
+      sessionStorage.removeItem('activity_form_data'); // Clear data as it will be submitted
+      activityForm.submit();
+    }
+    
+  } catch (error) {
+    console.error('Error restoring form data:', error);
+    // Don't clear the data on error so the user can try again
   }
 }

@@ -130,8 +130,19 @@
                             </div>
                             
                             <div class="text-center mt-4">
-                                <button type="submit" class="btn btn-primary btn-lg">Invite Participants</button>
+                                {% if current_user.is_authenticated %}
+                                <button type="submit" class="btn btn-primary btn-lg" id="invite-btn">Invite Participants</button>
+                                {% else %}
+                                <button type="button" class="btn btn-primary btn-lg" id="login-to-invite-btn">Invite Participants</button>
+                                {% endif %}
                             </div>
+                            <input type="hidden" name="user_authenticated" id="user_authenticated" value="{{ 'true' if current_user.is_authenticated else 'false' }}">
+                            {% if auto_submit %}
+                            <input type="hidden" name="auto_submit_after_login" id="auto_submit_after_login" value="true">
+                            {% endif %}
+                            {% if restore_data %}
+                            <input type="hidden" name="restore_data_after_login" id="restore_data_after_login" value="true">
+                            {% endif %}
                         </form>
                     </div>
                 </div>
@@ -145,6 +156,84 @@
 <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
 <script src="{{ url_for('static', filename='js/ai-conversation.js') }}"></script>
+<script>
+    // Add form submission interceptor to check login status
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Initializing form submission interceptor");
+        const activityForm = document.getElementById('activity-form');
+        const isAuthenticated = document.getElementById('user_authenticated').value === 'true';
+        
+        console.log("User authentication status:", isAuthenticated);
+        
+        // Login to invite button handler for guest users
+        const loginToInviteBtn = document.getElementById('login-to-invite-btn');
+        if (loginToInviteBtn) {
+            console.log("Login to invite button found");
+            loginToInviteBtn.addEventListener('click', function() {
+                console.log("Login to invite button clicked");
+                
+                // First validate the form to make sure all required fields are filled
+                if (!activityForm.checkValidity()) {
+                    activityForm.reportValidity();
+                    return;
+                }
+                
+                // Check if at least one participant was added
+                const participantsContainer = document.getElementById('participants-container');
+                if (participantsContainer && participantsContainer.children.length === 0) {
+                    alert('Please add at least one participant before proceeding.');
+                    return;
+                }
+                
+                // Save form data to sessionStorage
+                const formData = new FormData(activityForm);
+                const formDataObj = {};
+                
+                for (const [key, value] of formData.entries()) {
+                    if (formDataObj[key]) {
+                        if (!Array.isArray(formDataObj[key])) {
+                            formDataObj[key] = [formDataObj[key]];
+                        }
+                        formDataObj[key].push(value);
+                    } else {
+                        formDataObj[key] = value;
+                    }
+                }
+                
+                // Store form data in session with a timestamp to keep it valid
+                const dataToStore = {
+                    formData: formDataObj,
+                    timestamp: new Date().getTime(),  // Add timestamp for expiration check
+                    url: window.location.href         // Store the current URL for context
+                };
+                
+                // Save to sessionStorage with prefixed key for clarity
+                sessionStorage.setItem('activity_form_data', JSON.stringify(dataToStore));
+                console.log('Form data saved to sessionStorage:', dataToStore);
+                
+                // Redirect to login page with next URL parameter
+                window.location.href = "{{ url_for('auth.login', next=url_for('main.create_activity')) }}";
+            });
+        }
+        
+        if (activityForm) {
+            // This is now just a fallback - the form submit button is only shown to authenticated users
+            activityForm.addEventListener('submit', function(event) {
+                console.log("Form submit event triggered");
+                console.log("Is authenticated:", isAuthenticated);
+                
+                // Double-check authentication server-side
+                if (!isAuthenticated) {
+                    // If somehow a non-authenticated user submits the form, prevent it
+                    event.preventDefault();
+                    alert("You must be logged in to invite participants.");
+                    window.location.href = "{{ url_for('auth.login', next=url_for('main.create_activity')) }}";
+                }
+                // If authenticated, form will submit normally
+            });
+        }
+    });
+</script>
 <script>
     // Define the extractLocationAndTimeInfo function in the global scope first
     // Function to add visual indication that field was filled by AI
